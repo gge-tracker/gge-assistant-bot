@@ -122,7 +122,7 @@ def t(langue: str, cle: str, defaut: str = None, **kwargs) -> str:
 # ==========================================
 # ⚙️ VARIABLES GLOBALES & CACHE
 # ==========================================
-MON_ID_DISCORD = [MON_ID_DISCORD]
+MON_ID_DISCORD = [MON_ID_DISCORD]0
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 CACHE = {}
