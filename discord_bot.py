@@ -294,37 +294,16 @@ class GGEAssistantBot (commands .Bot ):
             path_fort =JOUEURS_DIR /"forteresses_sessions.json"
             path_users =CONFIG_DIR /"users.json"
 
-            if path_fort .exists ():
-                with open (path_fort ,encoding ="utf-8")as f :
-                    data_fort =json .load (f )
-                    sessions =data_fort .get ("sessions",{})
-
-                if sessions :
-                    users_data ={}
-                    if path_users .exists ():
-                        try :
-                            with open (path_users ,encoding ="utf-8")as f_u :
-                                users_data =json .load (f_u )
-                        except Exception :
-                            pass 
-
-                    logger .info (f"🛑 [Redémarrage] Envoi du préavis de reprise à {len(sessions)} joueurs...")
-
-                    for uid in sessions .keys ():
-                        try :
-                            user =self .get_user (int (uid ))or await self .fetch_user (int (uid ))
-                            langue =users_data .get (uid ,{}).get ("langue","fr")
-
-                            titre =t (langue ,"bot_restart_notify_title",defaut ="{e_refresh} Redémarrage système")
-                            desc =t (
-                            langue ,
-                            "bot_restart_notify_desc",
-                            defaut =(
-                            "{e_working} Une mise à jour ou une maintenance du système vient d'avoir lieu.\n\n"
-                            "{e_icon_search} Votre radar de forteresses a repris automatiquement en arrière-plan.\n"
-                            "{e_nocheck} Veuillez noter que les boutons interactifs (*Relancer / Vérifier*) de vos anciennes alertes ne sont désormais plus fonctionnels.\n\n"
-                            "{e_check} *(Retour à la normale effectif)*"
-                            ),
+                            titre = t(langue, "bot_restart_notify_title", defaut="{e_refresh} Redémarrage système")
+                            desc = t(
+                                langue,
+                                "bot_restart_notify_desc",
+                                defaut=(
+                                    "{e_working} Une mise à jour ou une maintenance du système vient d'avoir lieu.\n\n"
+                                    "{e_icon_search} Votre radar de forteresses a repris automatiquement en arrière-plan.\n"
+                                    "{e_nocheck} Veuillez noter que les boutons interactifs (*Relancer / Vérifier*) de vos anciennes alertes ne sont désormais plus fonctionnels.\n\n"
+                                    "{e_check} *(Retour à la normale effectif)*"
+                                ),
                             )
 
                             embed =discord .Embed (title =titre ,description =desc ,color =discord .Color .orange ())
@@ -366,7 +345,66 @@ class GGEAssistantBot (commands .Bot ):
             "description":f"**Nom :** `{guild.name}`\n**ID :** `{guild.id}`\n**Membres :** `{guild.member_count}`\n**Propriétaire :** `{proprio}`",
             "color":0x2ECC71 ,
             }
-            ],
+            try:
+                await self.session.post(webhook_servers, json=payload)
+            except:
+                pass
+
+        # Message de bienvenue standard avec vérification stricte des permissions
+        channel_to_send = guild.system_channel
+
+        def can_send_welcome(channel):
+            if not channel:
+                return False
+            perms = channel.permissions_for(guild.me)
+            return perms.view_channel and perms.send_messages and perms.embed_links
+
+        if not can_send_welcome(channel_to_send):
+            channel_to_send = None
+            for channel in guild.text_channels:
+                if can_send_welcome(channel):
+                    channel_to_send = channel
+                    break
+
+        if channel_to_send:
+            view = WelcomeView()
+            embed_initial = view.get_welcome_embed("en")
+            try:
+                await channel_to_send.send(embed=embed_initial, view=view)
+            except discord.Forbidden:
+                logger.warning(f"🔇 Message de bienvenue bloqué par les paramètres du serveur '{guild.name}'.")
+            except Exception as e:
+                logger.error(f"❌ Erreur inattendue du message de bienvenue sur {guild.name} : {e}")
+                self.loop.create_task(
+                    self._send_background_error(
+                        "🐛 Crash Inattendu (Bienvenue)",
+                        f"Crash lors du message de bienvenue sur **{guild.name}**.\nErreur : `{e}`",
+                    )
+                )
+            except Exception as e:
+                logger.error(f"❌ Erreur inattendue du message de bienvenue sur {guild.name} : {e}")
+                self.loop.create_task(
+                    self._send_background_error(
+                        "🐛 Crash Inattendu (Bienvenue)",
+                        f"Crash lors du message de bienvenue sur **{guild.name}**.\nErreur : `{e}`",
+                    )
+                )
+
+    async def on_guild_remove(self, guild: discord.Guild):
+        logger.warning(f"👋 [DÉPART SERVEUR] Le bot a été retiré de '{guild.name}' (ID: {guild.id})")
+
+        # 📢 WEBHOOK ADMIN : Départ d'un serveur
+        webhook_servers = os.getenv("WEBHOOK_LEAVE")
+        if webhook_servers and webhook_servers.startswith("http"):
+            payload = {
+                "username": "GGE Serveurs 📉",
+                "embeds": [
+                    {
+                        "title": "👋 Serveur Quitté",
+                        "description": f"**Nom :** `{guild.name}`\n**ID :** `{guild.id}`\n**Membres perdus :** `{guild.member_count}`",
+                        "color": 0xE74C3C,  # Rouge
+                    }
+                ],
             }
             try :
                 await self .session .post (webhook_servers ,json =payload )

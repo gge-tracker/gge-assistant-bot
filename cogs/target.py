@@ -523,18 +523,18 @@ class TargetWizard (discord .ui .View ):
         return embed 
 
 
-class CiblePaginationView (discord .ui .View ):
-    def __init__ (self ,cog ,attacker ,sort_by ,target_alliance ,embeds ,langue ="en",owner_id =None ):
-        super ().__init__ (timeout =3600 )
-        self .cog =cog 
-        self .attacker =attacker 
-        self .sort_by =sort_by 
-        self .target_alliance =target_alliance 
-        self .embeds =embeds 
-        self .current_page =0 
-        self .langue =langue 
-        self .owner_id =owner_id 
-        self .message =None 
+class CiblePaginationView(discord.ui.View):
+    def __init__(self, cog, attacker, sort_by, target_alliance, embeds, langue="en", owner_id=None):
+        super().__init__(timeout=3600)
+        self.cog = cog
+        self.attacker = attacker
+        self.sort_by = sort_by
+        self.target_alliance = target_alliance
+        self.embeds = embeds
+        self.current_page = 0
+        self.langue = langue
+        self.owner_id = owner_id
+        self.message = None
 
         self .btn_prev .label =t (langue ,"target_btn_prev",defaut ="Previous Page")
         self .btn_prev .emoji =DICT_EMOJIS .get ("e_last","⏮️")
@@ -556,32 +556,32 @@ class CiblePaginationView (discord .ui .View ):
             except discord .HTTPException :
                 pass 
 
-    async def interaction_check (self ,interaction :discord .Interaction )->bool :
-        if self .owner_id is not None and interaction .user .id !=self .owner_id :
-            msg_err =t (self .langue ,"target_err_not_yours",defaut ="❌ This radar scan is not yours.")
-            await interaction .response .send_message (msg_err ,ephemeral =True )
-            return False 
-        return True 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.owner_id is not None and interaction.user.id != self.owner_id:
+            msg_err = t(self.langue, "target_err_not_yours", defaut="❌ This radar scan is not yours.")
+            await interaction.response.send_message(msg_err, ephemeral=True)
+            return False
+        return True
 
     def update_buttons (self ):
         self .btn_prev .disabled =self .current_page ==0 
         self .btn_next .disabled =self .current_page ==len (self .embeds )-1 
 
-    @discord .ui .button (style =discord .ButtonStyle .secondary ,custom_id ="cible_prev")
-    async def btn_prev (self ,interaction :discord .Interaction ,button :discord .ui .Button ):
-        self .current_page -=1 
-        self .update_buttons ()
-        if not self .message :
-            self .message =interaction .message 
-        await interaction .response .edit_message (embed =self .embeds [self .current_page ],view =self )
+    @discord.ui.button(style=discord.ButtonStyle.secondary, custom_id="cible_prev")
+    async def btn_prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page -= 1
+        self.update_buttons()
+        if not self.message:
+            self.message = interaction.message
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
-    @discord .ui .button (style =discord .ButtonStyle .secondary ,custom_id ="cible_next")
-    async def btn_next (self ,interaction :discord .Interaction ,button :discord .ui .Button ):
-        self .current_page +=1 
-        self .update_buttons ()
-        if not self .message :
-            self .message =interaction .message 
-        await interaction .response .edit_message (embed =self .embeds [self .current_page ],view =self )
+    @discord.ui.button(style=discord.ButtonStyle.secondary, custom_id="cible_next")
+    async def btn_next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page += 1
+        self.update_buttons()
+        if not self.message:
+            self.message = interaction.message
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
 
     @discord .ui .button (style =discord .ButtonStyle .primary ,custom_id ="cible_rerun")
     async def btn_rerun (self ,interaction :discord .Interaction ,button :discord .ui .Button ):

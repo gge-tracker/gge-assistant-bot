@@ -29,33 +29,33 @@ t ,
 logger =logging .getLogger ("GGE_Bot")
 
 
+# ==========================================
+# LE COMPOSANT UI : VÉRIFIER & RELANCER (1H MAX)
+# ==========================================
+class FortressActionView(discord.ui.View):
+    def __init__(self, cog, user_id: str, cibles: list, joueur: str, serveur: str, langue: str = "fr"):
+        super().__init__(timeout=3600)
+        self.cog = cog
+        self.user_id = user_id
+        self.message = None
+        self.cibles = cibles
+        self.joueur = joueur
+        self.serveur = serveur
+        self.langue = langue
 
-
-
-class FortressActionView (discord .ui .View ):
-    def __init__ (self ,cog ,user_id :str ,cibles :list ,joueur :str ,serveur :str ,langue :str ="fr"):
-        super ().__init__ (timeout =3600 )
-        self .cog =cog 
-        self .user_id =user_id 
-        self .message =None 
-        self .cibles =cibles 
-        self .joueur =joueur 
-        self .serveur =serveur 
-        self .langue =langue 
-
-        self .btn_verify =discord .ui .Button (
-        style =discord .ButtonStyle .secondary ,
-        label =t (langue ,"fort_btn_verify",defaut ="Vérifier ces cibles"),
-        emoji =DICT_EMOJIS .get ("e_icon_search","🔍"),
-        custom_id ="btn_fort_verify",
+        self.btn_verify = discord.ui.Button(
+            style=discord.ButtonStyle.secondary,
+            label=t(langue, "fort_btn_verify", defaut="Vérifier ces cibles"),
+            emoji=DICT_EMOJIS.get("e_icon_search", "🔍"),
+            custom_id="btn_fort_verify",
         )
         self .btn_verify .callback =self .callback_verify 
 
-        self .btn_relaunch =discord .ui .Button (
-        style =discord .ButtonStyle .primary ,
-        label =t (langue ,"fort_btn_relaunch",defaut ="Relancer (10 suivantes)"),
-        emoji =DICT_EMOJIS .get ("e_refresh","🔄"),
-        custom_id ="fort_btn_relaunch",
+        self.btn_relaunch = discord.ui.Button(
+            style=discord.ButtonStyle.primary,
+            label=t(langue, "fort_btn_relaunch", defaut="Relancer (10 suivantes)"),
+            emoji=DICT_EMOJIS.get("e_refresh", "🔄"),
+            custom_id="fort_btn_relaunch",
         )
         self .btn_relaunch .callback =self .callback_relaunch 
 
@@ -159,15 +159,15 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
         except Exception as e :
             logger .error (f"❌ [VERIFY] Erreur API lors de la vérification globale : {e}")
 
-        embed =discord .Embed (
-        title =t (langue ,"fort_verify_title",defaut ="{e_icon_search} Résultat de la vérification"),
-        color =discord .Color .blue (),
-        timestamp =discord .utils .utcnow (),
+        embed = discord.Embed(
+            title=t(langue, "fort_verify_title", defaut="{e_icon_search} Résultat de la vérification"),
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow(),
         )
 
-        for idx ,cible in enumerate (cibles ,start =1 ):
-            cle =f"{cible['kid']}_{cible['x']}_{cible['y']}"
-            etat =etats .get (cle )
+        for idx, cible in enumerate(cibles, start=1):
+            cle = f"{cible['kid']}_{cible['x']}_{cible['y']}"
+            etat = etats.get(cle)
 
             nom_f =t (
             langue ,
@@ -177,23 +177,23 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
             defaut =f"{idx}. {cible['royaume']} `({cible['x']}:{cible['y']})`",
             )
 
-            if not etat :
-                status_txt =t (langue ,"fort_verify_unknown",defaut ="❓ **Inconnu** *(Trop loin ou disparue)*")
-            elif etat ["status"]=="libre":
-                status_txt =t (langue ,"fort_verify_free",defaut ="{e_std_green_circle} **Attaquable maintenant**")
-            else :
-                try :
-                    dt_cd =datetime .fromisoformat (etat ["cd_until"].replace ("Z","+00:00"))
-                    ts_cd =int (dt_cd .timestamp ())
-                    maintenant_ts =int (discord .utils .utcnow ().timestamp ())
-                    minutes_restantes =max (1 ,int ((ts_cd -maintenant_ts )/60 ))
+            if not etat:
+                status_txt = t(langue, "fort_verify_unknown", defaut="❓ **Inconnu** *(Trop loin ou disparue)*")
+            elif etat["status"] == "libre":
+                status_txt = t(langue, "fort_verify_free", defaut="{e_std_green_circle} **Attaquable maintenant**")
+            else:
+                try:
+                    dt_cd = datetime.fromisoformat(etat["cd_until"].replace("Z", "+00:00"))
+                    ts_cd = int(dt_cd.timestamp())
+                    maintenant_ts = int(discord.utils.utcnow().timestamp())
+                    minutes_restantes = max(1, int((ts_cd - maintenant_ts) / 60))
 
-                    status_txt =t (
-                    langue ,
-                    "fort_verify_burning",
-                    mins =minutes_restantes ,
-                    ts =ts_cd ,
-                    defaut =f"🔥 **En feu** *(Dispo dans {minutes_restantes} min)*",
+                    status_txt = t(
+                        langue,
+                        "fort_verify_burning",
+                        mins=minutes_restantes,
+                        ts=ts_cd,
+                        defaut=f"🔥 **En feu** *(Dispo dans {minutes_restantes} min)*",
                     )
                 except :
                     status_txt =t (langue ,"fort_verify_burning_unk",defaut ="🔥 **En feu** *(Temps inconnu)*")
@@ -203,16 +203,16 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
         await setup_embed_footer (embed ,interaction ,langue )
         await interaction .followup .send (embed =embed ,ephemeral =False )
 
-
-
-
-    async def relaunch_scan (self ,interaction :discord .Interaction ,user_id :str ,langue :str ):
-        data =await load_dungeons_async ()
-        if user_id not in data .get ("sessions",{}):
-            msg_err =t (
-            langue ,
-            "fort_err_no_session",
-            defaut ="{e_warning} Ta session de scan est terminée ou introuvable. Relance `/fortress scan` pour en démarrer une nouvelle.",
+    # ==========================================
+    # 🧠 MÉTHODE : RELANCE (LES 10 SUIVANTES)
+    # ==========================================
+    async def relaunch_scan(self, interaction: discord.Interaction, user_id: str, langue: str):
+        data = await load_dungeons_async()
+        if user_id not in data.get("sessions", {}):
+            msg_err = t(
+                langue,
+                "fort_err_no_session",
+                defaut="{e_warning} Ta session de scan est terminée ou introuvable. Relance `/fortress scan` pour en démarrer une nouvelle.",
             )
             return await interaction .followup .send (msg_err ,ephemeral =False )
 
@@ -235,23 +235,23 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
             data ["sessions"][user_id ]=info 
             await save_dungeons_async (data )
 
-        if cibles_list :
-            view =FortressActionView (self ,user_id ,cibles_list ,joueur ,serveur ,langue )
-            await setup_embed_footer (embed_cibles ,interaction ,langue )
-            view .message =await interaction .followup .send (embed =embed_cibles ,view =view ,ephemeral =False ,wait =True )
-        else :
-            embed_attente =discord .Embed (
-            title =t (
-            langue ,
-            "fort_wait_title",
-            defaut ="{e_std_open_mailbox_with_lowered_flag} Calme plat sur les frontières...",
-            ),
-            color =self .clr_attente ,
-            description =t (
-            langue ,
-            "fort_wait_desc",
-            defaut ="{e_std_sleeping_face} **Aucune forteresse n'est attaquable ou proche de s'ouvrir.**\nToutes les structures aux alentours sont verrouillées en phase de reconstruction.\n\n*Le guet reste en alerte invisible et te contactera par MP dès qu'un mur redevient vulnérable !* {e_std_hot_beverage}",
-            ),
+        if cibles_list:
+            view = FortressActionView(self, user_id, cibles_list, joueur, serveur, langue)
+            await setup_embed_footer(embed_cibles, interaction, langue)
+            view.message = await interaction.followup.send(embed=embed_cibles, view=view, ephemeral=False, wait=True)
+        else:
+            embed_attente = discord.Embed(
+                title=t(
+                    langue,
+                    "fort_wait_title",
+                    defaut="{e_std_open_mailbox_with_lowered_flag} Calme plat sur les frontières...",
+                ),
+                color=self.clr_attente,
+                description=t(
+                    langue,
+                    "fort_wait_desc",
+                    defaut="{e_std_sleeping_face} **Aucune forteresse n'est attaquable ou proche de s'ouvrir.**\nToutes les structures aux alentours sont verrouillées en phase de reconstruction.\n\n*Le guet reste en alerte invisible et te contactera par MP dès qu'un mur redevient vulnérable !* {e_std_hot_beverage}",
+                ),
             )
             await setup_embed_footer (embed_attente ,interaction ,langue )
             await interaction .followup .send (embed =embed_attente ,ephemeral =False )
@@ -313,10 +313,10 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
     ):
         headers =await get_api_headers (custom_server =serveur )
 
-        dict_royaumes ={
-        1 :t (langue ,"fort_realm_sands",defaut ="Sables {e_dungeon1}"),
-        2 :t (langue ,"fort_realm_ice",defaut ="Glaces {e_dungeon2}"),
-        3 :t (langue ,"fort_realm_peaks",defaut ="Pics {e_dungeon3}"),
+        dict_royaumes = {
+            1: t(langue, "fort_realm_sands", defaut="Sables {e_dungeon1}"),
+            2: t(langue, "fort_realm_ice", defaut="Glaces {e_dungeon2}"),
+            3: t(langue, "fort_realm_peaks", defaut="Pics {e_dungeon3}"),
         }
         safe_joueur =urllib .parse .quote (joueur )
         kids_str ="%5B"+",".join (f"%22{k}%22"for k in kids_to_scan )+"%5D"
@@ -387,40 +387,32 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
         except Exception as e :
             logger .error (f"❌ [FORTERESSES] Erreur API Globale: {e}")
 
+        # 🟢 APPEL DU META-SCAN
+        last_scan_str = await self.fetch_meta_scan(session, headers)
+        lbl_last_scan = t(langue, "fort_lbl_last_scan", defaut="Dernier scan API :")
+        txt_last_scan = f"\n*{DICT_EMOJIS.get('e_std_satellite_antenna', '📡')} {lbl_last_scan} {last_scan_str}*"
 
         last_scan_str =await self .fetch_meta_scan (session ,headers )
         lbl_last_scan =t (langue ,"fort_lbl_last_scan",defaut ="Dernier scan API :")
         txt_last_scan =f"\n*{DICT_EMOJIS.get('e_std_satellite_antenna', '📡')} {lbl_last_scan} {last_scan_str}*"
 
 
+            titre = t(langue, "fort_title_avail", defaut="{e_attaque} CIBLES DISPONIBLES IMMÉDIATEMENT")
+            embed = discord.Embed(title=titre, color=discord.Color.green())
 
-
-        if cibles_dispo :
-            cibles_dispo .sort (key =lambda c :c ["dist"]if c ["dist"]!=-1.0 else 99999 )
-            vivier =cibles_dispo [:30 ]
-            cibles_a_envoyer =self .chain_targets_by_coordinates (vivier )[:10 ]
-
-            sessions_modifiees =False 
-            for c in cibles_a_envoyer :
-                notified .append (c ["uid"])
-                sessions_modifiees =True 
-
-            titre =t (langue ,"fort_title_avail",defaut ="{e_attaque} CIBLES DISPONIBLES IMMÉDIATEMENT")
-            embed =discord .Embed (title =titre ,color =discord .Color .green ())
-
-            embed_desc_base =t (
-            langue ,
-            "fort_desc_avail",
-            count =len (cibles_a_envoyer ),
-            defaut =f"Le guet a repéré **{len(cibles_a_envoyer)}** forteresse(s) prête(s) au pillage :",
+            embed_desc_base = t(
+                langue,
+                "fort_desc_avail",
+                count=len(cibles_a_envoyer),
+                defaut=f"Le guet a repéré **{len(cibles_a_envoyer)}** forteresse(s) prête(s) au pillage :",
             )
-            embed .description =embed_desc_base +txt_last_scan 
+            embed.description = embed_desc_base + txt_last_scan
 
-            for idx ,c in enumerate (cibles_a_envoyer ,start =1 ):
-                dist_str =(
-                t (langue ,"fort_dist_val",dist =int (c ["dist"]),defaut =f"**{int(c['dist'])}** lieues")
-                if c ["dist"]!=-1.0 
-                else t (langue ,"fort_dist_unk",defaut ="{e_icon_search} Inconnue")
+            for idx, c in enumerate(cibles_a_envoyer, start=1):
+                dist_str = (
+                    t(langue, "fort_dist_val", dist=int(c["dist"]), defaut=f"**{int(c['dist'])}** lieues")
+                    if c["dist"] != -1.0
+                    else t(langue, "fort_dist_unk", defaut="{e_icon_search} Inconnue")
                 )
                 name_f =t (
                 langue ,
@@ -430,13 +422,13 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
                 dist_str =dist_str ,
                 defaut =f"{idx}. {c['royaume']} ({dist_str})",
                 )
-                val_f =t (
-                langue ,
-                "fort_field_val_avail",
-                x =c ["x"],
-                y =c ["y"],
-                ancien =c ["ancien"],
-                defaut =f"{{e_compass}} Position : `{c['x']}:{c['y']}` {{e_empirerankings}} Dernier roi : *{c['ancien']}*\n**Statut : {{e_std_green_circle}} Attaquable maintenant**",
+                val_f = t(
+                    langue,
+                    "fort_field_val_avail",
+                    x=c["x"],
+                    y=c["y"],
+                    ancien=c["ancien"],
+                    defaut=f"{{e_compass}} Position : `{c['x']}:{c['y']}` {{e_empirerankings}} Dernier roi : *{c['ancien']}*\n**Statut : {{e_std_green_circle}} Attaquable maintenant**",
                 )
                 embed .add_field (name =name_f ,value =val_f ,inline =False )
 
@@ -444,6 +436,36 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
             return sessions_modifiees ,embed ,cibles_a_envoyer 
 
 
+        if cibles_moins_5min:
+            cibles_moins_5min.sort(key=lambda c: c["cooldown"])
+            cibles_finales = cibles_moins_5min[:10]
+            embed_title = t(
+                langue,
+                "fort_title_imminent",
+                defaut="{e_time} SURVEILLANCE : Cibles imminentes (< 5 min)",
+            )
+            embed_color = discord.Color.orange()
+            embed_desc = t(
+                langue,
+                "fort_desc_imminent",
+                defaut="Aucune cible libre de suite, mais le guet a identifié ces structures sur le point de s'ouvrir :",
+            )
+            status_label = t(langue, "fort_status_imminent", defaut="{e_deeporangebullet} Ouverture dans")
+        elif cibles_moins_1h:
+            cibles_moins_1h.sort(key=lambda c: c["cooldown"])
+            cibles_finales = cibles_moins_1h[:10]
+            embed_title = t(
+                langue,
+                "fort_title_anticip",
+                defaut="{e_time} ANTICIPATION : Cibles en recharge (< 1 heure)",
+            )
+            embed_color = discord.Color.red()
+            embed_desc = t(
+                langue,
+                "fort_desc_anticip",
+                defaut="Zone calme pour l'instant. Voici les prochaines cibles disponibles dans l'heure pour préparer tes calages :",
+            )
+            status_label = t(langue, "fort_status_anticip", defaut="{e_tomatobulletpoint} Verrouillée pendant")
 
 
         cibles_finales =[]
@@ -452,51 +474,11 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
         embed_desc =""
         status_label =""
 
-        if cibles_moins_5min :
-            cibles_moins_5min .sort (key =lambda c :c ["cooldown"])
-            cibles_finales =cibles_moins_5min [:10 ]
-            embed_title =t (
-            langue ,
-            "fort_title_imminent",
-            defaut ="{e_time} SURVEILLANCE : Cibles imminentes (< 5 min)",
-            )
-            embed_color =discord .Color .orange ()
-            embed_desc =t (
-            langue ,
-            "fort_desc_imminent",
-            defaut ="Aucune cible libre de suite, mais le guet a identifié ces structures sur le point de s'ouvrir :",
-            )
-            status_label =t (langue ,"fort_status_imminent",defaut ="{e_deeporangebullet} Ouverture dans")
-        elif cibles_moins_1h :
-            cibles_moins_1h .sort (key =lambda c :c ["cooldown"])
-            cibles_finales =cibles_moins_1h [:10 ]
-            embed_title =t (
-            langue ,
-            "fort_title_anticip",
-            defaut ="{e_time} ANTICIPATION : Cibles en recharge (< 1 heure)",
-            )
-            embed_color =discord .Color .red ()
-            embed_desc =t (
-            langue ,
-            "fort_desc_anticip",
-            defaut ="Zone calme pour l'instant. Voici les prochaines cibles disponibles dans l'heure pour préparer tes calages :",
-            )
-            status_label =t (langue ,"fort_status_anticip",defaut ="{e_tomatobulletpoint} Verrouillée pendant")
-
-        if cibles_finales :
-            sessions_modifiees =False 
-            for c in cibles_finales :
-                notified .append (c ["uid"])
-                sessions_modifiees =True 
-
-            embed =discord .Embed (title =embed_title ,color =embed_color )
-            embed .description =embed_desc +txt_last_scan 
-
-            for idx ,c in enumerate (cibles_finales ,start =1 ):
-                dist_str =(
-                t (langue ,"fort_dist_val",dist =int (c ["dist"]),defaut =f"**{int(c['dist'])}** lieues")
-                if c ["dist"]!=-1.0 
-                else t (langue ,"fort_dist_unk",defaut ="{e_icon_search} Inconnue")
+            for idx, c in enumerate(cibles_finales, start=1):
+                dist_str = (
+                    t(langue, "fort_dist_val", dist=int(c["dist"]), defaut=f"**{int(c['dist'])}** lieues")
+                    if c["dist"] != -1.0
+                    else t(langue, "fort_dist_unk", defaut="{e_icon_search} Inconnue")
                 )
                 minutes_restantes =max (1 ,int (c ["cooldown"]//60 ))
 
@@ -508,15 +490,15 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
                 dist_str =dist_str ,
                 defaut =f"{idx}. {c['royaume']} ({dist_str})",
                 )
-                val_f =t (
-                langue ,
-                "fort_field_val_cd",
-                x =c ["x"],
-                y =c ["y"],
-                ancien =c ["ancien"],
-                status =status_label ,
-                mins =minutes_restantes ,
-                defaut =f"{{e_compass}} Position : `{c['x']}:{c['y']}` {{e_empirerankings}} Dernier roi : *{c['ancien']}*\n**Statut : {status_label} {minutes_restantes} min**",
+                val_f = t(
+                    langue,
+                    "fort_field_val_cd",
+                    x=c["x"],
+                    y=c["y"],
+                    ancien=c["ancien"],
+                    status=status_label,
+                    mins=minutes_restantes,
+                    defaut=f"{{e_compass}} Position : `{c['x']}:{c['y']}` {{e_empirerankings}} Dernier roi : *{c['ancien']}*\n**Statut : {status_label} {minutes_restantes} min**",
                 )
 
                 embed .add_field (name =name_f ,value =val_f ,inline =False )
@@ -555,22 +537,22 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
         if peaks :
             kids .append (3 )
 
-        if not kids :
-            err_msg =t (
-            langue ,
-            "fort_err_no_realms",
-            defaut ="{e_error} Tu as laissé tous les mondes sur `False`. Active au moins un royaume !",
+        if not kids:
+            err_msg = t(
+                langue,
+                "fort_err_no_realms",
+                defaut="{e_error} Tu as laissé tous les mondes sur `False`. Active au moins un royaume !",
             )
             return await interaction .followup .send (err_msg ,ephemeral =False )
 
         data =await load_dungeons_async ()
         user_id =str (interaction .user .id )
 
-        if user_id in data .get ("sessions",{}):
-            msg_warn =t (
-            langue ,
-            "fort_warn_overwrite",
-            defaut ="{e_warning} **Attention :** Tu avais déjà un radar en cours ! Il vient d'être réinitialisé. Pense à utiliser `/fortress stop` la prochaine fois pour éviter de recevoir des alertes en double.",
+        if user_id in data.get("sessions", {}):
+            msg_warn = t(
+                langue,
+                "fort_warn_overwrite",
+                defaut="{e_warning} **Attention :** Tu avais déjà un radar en cours ! Il vient d'être réinitialisé. Pense à utiliser `/fortress stop` la prochaine fois pour éviter de recevoir des alertes en double.",
             )
             try :
                 await interaction .followup .send (msg_warn ,ephemeral =True )
@@ -602,58 +584,320 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
         data ["sessions"][user_id ]=info_session 
         await save_dungeons_async (data )
 
-        ts_fin =int (end_time .timestamp ())
-        noms_royaumes =[]
-        if 1 in kids :
-            noms_royaumes .append (t (langue ,"fort_realm_sands",defaut ="Sables {e_dungeon1}"))
-        if 2 in kids :
-            noms_royaumes .append (t (langue ,"fort_realm_ice",defaut ="Glaces {e_dungeon2}"))
-        if 3 in kids :
-            noms_royaumes .append (t (langue ,"fort_realm_peaks",defaut ="Pics {e_dungeon3}"))
+        ts_fin = int(end_time.timestamp())
+        noms_royaumes = []
+        if 1 in kids:
+            noms_royaumes.append(t(langue, "fort_realm_sands", defaut="Sables {e_dungeon1}"))
+        if 2 in kids:
+            noms_royaumes.append(t(langue, "fort_realm_ice", defaut="Glaces {e_dungeon2}"))
+        if 3 in kids:
+            noms_royaumes.append(t(langue, "fort_realm_peaks", defaut="Pics {e_dungeon3}"))
 
-        st_fluide =t (langue ,"fort_status_fluid",defaut ="{e_greencirclebullet} `Fluide`")
-        st_mod =t (langue ,"fort_status_mod",defaut ="{e_deeporangebullet} `Modérée`")
-        st_elev =t (langue ,"fort_status_high",defaut ="{e_tomatobulletpoint} `Élevée`")
-        status_charge =st_fluide if nb_sessions_actives <4 else st_mod if nb_sessions_actives <8 else st_elev 
+        st_fluide = t(langue, "fort_status_fluid", defaut="{e_greencirclebullet} `Fluide`")
+        st_mod = t(langue, "fort_status_mod", defaut="{e_deeporangebullet} `Modérée`")
+        st_elev = t(langue, "fort_status_high", defaut="{e_tomatobulletpoint} `Élevée`")
+        status_charge = st_fluide if nb_sessions_actives < 4 else st_mod if nb_sessions_actives < 8 else st_elev
 
-        embed_conf =discord .Embed (
-        title =t (langue ,"fort_setup_title",defaut ="{e_events4} Dispositif de Guet Activé"),
-        color =self .clr_activation ,
+        embed_conf = discord.Embed(
+            title=t(langue, "fort_setup_title", defaut="{e_events4} Dispositif de Guet Activé"),
+            color=self.clr_activation,
         )
-        embed_conf .add_field (
-        name =t (langue ,"fort_field_player",defaut ="{e_players} Joueur"),
-        value =f"`{nom_joueur}`",
-        inline =False ,
+        embed_conf.add_field(
+            name=t(langue, "fort_field_player", defaut="{e_players} Joueur"),
+            value=f"`{nom_joueur}`",
+            inline=False,
         )
-        embed_conf .add_field (
-        name =t (langue ,"fort_field_realms",defaut ="{e_icon_world} Mondes"),
-        value =" • ".join (noms_royaumes ),
-        inline =False ,
+        embed_conf.add_field(
+            name=t(langue, "fort_field_realms", defaut="{e_icon_world} Mondes"),
+            value=" • ".join(noms_royaumes),
+            inline=False,
         )
-        embed_conf .add_field (
-        name =t (langue ,"fort_field_freq",defaut ="{e_time} Fréquence"),value =f"`{freq_val} min`",inline =True 
+        embed_conf.add_field(
+            name=t(langue, "fort_field_freq", defaut="{e_time} Fréquence"), value=f"`{freq_val} min`", inline=True
         )
         embed_conf .add_field (
         name =t (langue ,"fort_field_end",defaut ="⏳ Fin du guet"),value =f"<t:{ts_fin}:R>",inline =True 
         )
-        embed_conf .add_field (
-        name =t (langue ,"fort_field_load",defaut ="{e_stats} Charge Bot"),value =f"{status_charge}",inline =True 
+        embed_conf.add_field(
+            name=t(langue, "fort_field_load", defaut="{e_stats} Charge Bot"), value=f"{status_charge}", inline=True
         )
         await setup_embed_footer (embed_conf ,interaction ,langue )
         await interaction .followup .send (embed =embed_conf ,ephemeral =False )
 
         logger .info (f"🟢 [FORTERESSES] {interaction.user.name} a démarré un scan radar pour {nom_joueur}.")
 
-        if cibles_list :
-            view =FortressActionView (self ,user_id ,cibles_list ,nom_joueur ,serveur ,langue )
-            await setup_embed_footer (embed_cibles ,interaction ,langue )
-            view .message =await interaction .followup .send (embed =embed_cibles ,view =view ,ephemeral =False ,wait =True )
-        else :
-            embed_attente =discord .Embed (
-            title =t (
-            langue ,
-            "fort_wait_title",
-            defaut ="{e_std_open_mailbox_with_lowered_flag} Calme plat sur les frontières...",
+        if cibles_list:
+            view = FortressActionView(self, user_id, cibles_list, nom_joueur, serveur, langue)
+            await setup_embed_footer(embed_cibles, interaction, langue)
+            view.message = await interaction.followup.send(embed=embed_cibles, view=view, ephemeral=False, wait=True)
+        else:
+            embed_attente = discord.Embed(
+                title=t(
+                    langue,
+                    "fort_wait_title",
+                    defaut="{e_std_open_mailbox_with_lowered_flag} Calme plat sur les frontières...",
+                ),
+                color=self.clr_attente,
+                description=t(
+                    langue,
+                    "fort_wait_desc",
+                    defaut="{e_std_sleeping_face} **Aucune forteresse n'est attaquable ou proche de s'ouvrir (rien à moins d'une heure).**\nToutes les structures aux alentours sont verrouillées en phase de reconstruction.\n\n*Profites-en pour former de nouvelles troupes, gérer ton alliance ou t'accorder une pause café. Le guet reste en alerte invisible et te contactera par MP dès qu'un mur redevient vulnérable !* {e_std_hot_beverage}",
+                ),
+            )
+            await setup_embed_footer(embed_attente, interaction, langue)
+            await interaction.followup.send(embed=embed_attente, ephemeral=False)
+        await prompt_vote_if_lucky(interaction, probability_percent=15, langue=langue)
+
+    # ==========================================
+    # 🔴 COMMANDE : STOP
+    # ==========================================
+    @app_commands.command(name="stop", description="Stop your fortress scanning session")
+    async def f_stop(self, interaction: discord.Interaction):
+        try:
+            await interaction.response.defer(ephemeral=False, thinking=True)
+        except:
+            return
+
+        langue, _ = await get_server_config(interaction)
+        data = await load_dungeons_async()
+        user_id = str(interaction.user.id)
+
+        if user_id in data["sessions"]:
+            del data["sessions"][user_id]
+            await save_dungeons_async(data)
+            logger.info(f"🛑 [FORTERESSES] {interaction.user.name} a stoppé son scan radar.")
+            await interaction.followup.send(
+                t(
+                    langue,
+                    "fort_stop_success",
+                    defaut="{e_check} **Session arrêtée.** Fin des alertes.",
+                ),
+                ephemeral=False,
+            )
+        else:
+            await interaction.followup.send(
+                t(langue, "fort_stop_fail", defaut="{e_error} Tu n'as aucune session active."),
+                ephemeral=False,
+            )
+        await prompt_vote_if_lucky(interaction, probability_percent=15, langue=langue)
+
+    # ==========================================
+    # 🛰️ LA TÂCHE DE FOND
+    # ==========================================
+    @tasks.loop(minutes=1)
+    async def dungeon_spy_task(self):
+        try:
+            data = await load_dungeons_async()
+            sessions = data.get("sessions", {})
+            if not sessions:
+                return
+
+            users_data = {}
+            path_users = CONFIG_DIR / "users.json"
+            if os.path.exists(path_users):
+                try:
+                    with open(path_users, encoding="utf-8") as f:
+                        users_data = json.load(f)
+                except:
+                    pass
+
+            maintenant = discord.utils.utcnow()
+            sessions_modifiees = False
+
+            for user_id, info in list(sessions.items()):
+                joueur = info.get("joueur", "Inconnu")
+                serveur = info.get("serveur", "E4K_FR1")
+                langue = users_data.get(user_id, {}).get("langue", "fr")
+
+                try:
+                    end_dt = datetime.fromisoformat(info["end_time"].replace("Z", "+00:00"))
+                    if maintenant > end_dt:
+                        del data["sessions"][user_id]
+                        sessions_modifiees = True
+                        try:
+                            user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
+                            msg = t(
+                                langue,
+                                "fort_session_ended",
+                                joueur=joueur,
+                                defaut="{e_information} **Fin de session !** Ton radar pour **{joueur}** s'est éteint.",
+                            )
+                            await user.send(msg)
+                            logger.info(f"🏁 [FORTERESSES] Session terminée naturellement pour {user.name}.")
+                        except:
+                            pass
+                        continue
+                except:
+                    pass
+
+                try:
+                    next_scan_dt = datetime.fromisoformat(info["next_scan"].replace("Z", "+00:00"))
+                    if maintenant < next_scan_dt:
+                        continue
+                except:
+                    pass
+
+                kids = info.get("kids", [2])
+                dist = info.get("distance_max", 999)
+                if "notified" not in info:
+                    info["notified"] = []
+
+                modifie, embed_cibles, cibles_list = await self.fetch_cibles(
+                    joueur, kids, dist, info["notified"], self.bot.session, serveur=serveur, langue=langue
+                )
+
+                freq = info.get("frequence_minutes", 5)
+                info["next_scan"] = (maintenant + timedelta(minutes=freq)).isoformat().replace("+00:00", "Z")
+                sessions_modifiees = True
+
+                if cibles_list:
+                    try:
+                        user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
+                        view = FortressActionView(self, user_id, cibles_list, joueur, serveur, langue)
+                        logger.info(
+                            f"📤 [FORTERESSES] Envoi automatique de nouvelles cibles à {user.name} ({user_id}) pour {joueur}."
+                        )
+                        await user.send(embed=embed_cibles, view=view)
+                    except Exception as e:
+                        logger.error(f"❌ [FORTERESSES] Erreur d'envoi MP à {user_id}: {e}")
+
+            if sessions_modifiees:
+                await save_dungeons_async(data)
+
+        except Exception as e:
+            logger.error(f"❌ [FORTERESSES CRASH] : {traceback.format_exc()}")
+
+    # ==========================================
+    # 📜 Forteresses : HISTORY
+    # ==========================================
+    @app_commands.command(name="history", description="View a player's fortress attack history (up to 365 days)")
+    @app_commands.autocomplete(player=joueur_autocomplete)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def f_history(self, interaction: discord.Interaction, player: str):
+        try:
+            await interaction.response.defer(ephemeral=False, thinking=True)
+        except:
+            return
+
+        langue, serveur = await get_server_config(interaction)
+        headers = await get_api_headers(custom_server=serveur)
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="{e_time} **Données datées de :**")
+
+        player_id = None
+        vrai_nom = player
+        cache = await get_cached_data(serveur)
+        local_data = cache.get("players_data", {})
+
+        for p_name, p_info in local_data.items():
+            if p_name.lower() == player.lower():
+                player_id = str(p_info.get("player_id", p_info.get("id", "")))
+                vrai_nom = p_name
+                break
+
+        if not player_id:
+            try:
+                async with self.bot.session.get(
+                    f"{self.base_api}/players/{urllib.parse.quote(player)}", headers=headers, timeout=8
+                ) as r:
+                    if r.status == 200:
+                        p_data = await r.json()
+                        if isinstance(p_data, list) and p_data:
+                            p_data = p_data[0]
+                            player_id = str(p_data.get("player_id", p_data.get("id", "")))
+                            vrai_nom = p_data.get("player_name", player)
+            except:
+                pass
+
+        if not player_id:
+            return await interaction.followup.send(
+                t(
+                    langue,
+                    "ev_woa_player_not_found",
+                    p=player,
+                    defaut=f"{{e_error}} Joueur **{player}** introuvable sur le serveur {serveur}.",
+                )
+            )
+
+        # On interroge l'API pour l'historique sur 365 jours
+        url_history = f"{self.base_api}/dungeons/player/{player_id}?lastDays=365"
+        try:
+            async with self.bot.session.get(url_history, headers=headers, timeout=12) as r:
+                if r.status != 200:
+                    return await interaction.followup.send(
+                        t(
+                            langue,
+                            "fort_err_api",
+                            defaut="{e_error} Impossible de récupérer l'historique depuis l'API.",
+                        )
+                    )
+                data = await r.json()
+                dungeons = data.get("dungeons", [])
+        except Exception as e:
+            logger.error(f"❌ Erreur API Fortress History : {e}")
+            return await interaction.followup.send(
+                t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur technique : {e}")
+            )
+
+        if not dungeons:
+            return await interaction.followup.send(
+                t(
+                    langue,
+                    "fort_hist_empty",
+                    p=vrai_nom,
+                    defaut=f"📭 **{vrai_nom}** n'a attaqué aucune forteresse enregistrée durant l'année écoulée.",
+                )
+            )
+
+        # Tri pour avoir les plus récents en haut
+        dungeons.sort(key=lambda x: x.get("attacked_at", ""), reverse=True)
+
+        latest_attack_ts = int(discord.utils.utcnow().timestamp())
+        if dungeons and dungeons[0].get("attacked_at"):
+            try:
+                latest_dt = datetime.fromisoformat(dungeons[0]["attacked_at"].replace("Z", "+00:00"))
+                latest_attack_ts = int(latest_dt.timestamp())
+            except:
+                pass
+
+        total_hits = len(dungeons)
+
+        dict_royaumes = {
+            1: t(langue, "fort_realm_sands", defaut="Sables {e_dungeon1}"),
+            2: t(langue, "fort_realm_ice", defaut="Glaces {e_dungeon2}"),
+            3: t(langue, "fort_realm_peaks", defaut="Pics {e_dungeon3}"),
+        }
+        kid_counts = Counter(d.get("kid") for d in dungeons if d.get("kid"))
+
+        total_rubies = (kid_counts.get(1, 0) * 280) + (kid_counts.get(2, 0) * 50) + (kid_counts.get(3, 0) * 370)
+        rubies_str = f"{total_rubies:,}".replace(",", " ")
+
+        best_kid, best_kid_count = kid_counts.most_common(1)[0]
+        royaume_prefere = dict_royaumes.get(best_kid, f"Monde {best_kid}")
+        pct_kid = (best_kid_count / total_hits) * 100
+
+        date_counts = Counter(d.get("attacked_at", "")[:10] for d in dungeons if d.get("attacked_at"))
+        best_date_str, best_date_count = date_counts.most_common(1)[0]
+        try:
+            best_date_obj = datetime.strptime(best_date_str, "%Y-%m-%d")
+            jour_actif_str = best_date_obj.strftime("%d/%m/%Y")
+        except:
+            jour_actif_str = best_date_str
+
+        stats_desc = t(
+            langue,
+            "fort_hist_stats",
+            tot=total_hits,
+            rp=royaume_prefere,
+            pct=f"{pct_kid:.1f}",
+            j=jour_actif_str,
+            jc=best_date_count,
+            rub=rubies_str,
+            defaut=(
+                f"**{{e_stats}} Bilan Annuel**\n"
+                f"{{e_attaque}} **Total des attaques :** {total_hits}\n"
+                f"{{e_ruby}} **Gains estimés :** {rubies_str} Rubis\n"
+                f"{{e_std_world_map}} **Royaume favori :** {royaume_prefere} *( {pct_kid:.1f}% des frappes )*\n"
+                f"{{e_std_crossed_swords}} **Jour le plus actif :** {jour_actif_str} *( {best_date_count} attaques )*"
             ),
             color =self .clr_attente ,
             description =t (
@@ -666,6 +910,13 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
             await interaction .followup .send (embed =embed_attente ,ephemeral =False )
         await prompt_vote_if_lucky (interaction ,probability_percent =15 ,langue =langue )
 
+        # ---------------------------------------------------------
+        # LOGIQUE : GROUPEMENT DES DONNÉES JOUR PAR JOUR
+        # ---------------------------------------------------------
+        daily_stats = {}
+        for d in dungeons:
+            kid = d.get("kid")
+            dt_str = d.get("attacked_at", "")[:10]  # On extrait "YYYY-MM-DD"
 
 
 
@@ -710,14 +961,12 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
             if not sessions :
                 return 
 
-            users_data ={}
-            path_users =CONFIG_DIR /"users.json"
-            if os .path .exists (path_users ):
-                try :
-                    with open (path_users ,encoding ="utf-8")as f :
-                        users_data =json .load (f )
-                except :
-                    pass 
+        title = t(
+            langue,
+            "fort_hist_title",
+            p=vrai_nom,
+            defaut=f"{{e_events4}} Historique des Pillages : {vrai_nom}",
+        )
 
             maintenant =discord .utils .utcnow ()
             sessions_modifiees =False 
@@ -727,113 +976,13 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
                 serveur =info .get ("serveur","E4K_FR1")
                 langue =users_data .get (user_id ,{}).get ("langue","fr")
 
-                try :
-                    end_dt =datetime .fromisoformat (info ["end_time"].replace ("Z","+00:00"))
-                    if maintenant >end_dt :
-                        del data ["sessions"][user_id ]
-                        sessions_modifiees =True 
-                        try :
-                            user =self .bot .get_user (int (user_id ))or await self .bot .fetch_user (int (user_id ))
-                            msg =t (
-                            langue ,
-                            "fort_session_ended",
-                            joueur =joueur ,
-                            defaut ="{e_information} **Fin de session !** Ton radar pour **{joueur}** s'est éteint.",
-                            )
-                            await user .send (msg )
-                            logger .info (f"🏁 [FORTERESSES] Session terminée naturellement pour {user.name}.")
-                        except :
-                            pass 
-                        continue 
-                except :
-                    pass 
-
-                try :
-                    next_scan_dt =datetime .fromisoformat (info ["next_scan"].replace ("Z","+00:00"))
-                    if maintenant <next_scan_dt :
-                        continue 
-                except :
-                    pass 
-
-                kids =info .get ("kids",[2 ])
-                dist =info .get ("distance_max",999 )
-                if "notified"not in info :
-                    info ["notified"]=[]
-
-                modifie ,embed_cibles ,cibles_list =await self .fetch_cibles (
-                joueur ,kids ,dist ,info ["notified"],self .bot .session ,serveur =serveur ,langue =langue 
-                )
-
-                freq =info .get ("frequence_minutes",5 )
-                info ["next_scan"]=(maintenant +timedelta (minutes =freq )).isoformat ().replace ("+00:00","Z")
-                sessions_modifiees =True 
-
-                if cibles_list :
-                    try :
-                        user =self .bot .get_user (int (user_id ))or await self .bot .fetch_user (int (user_id ))
-                        view =FortressActionView (self ,user_id ,cibles_list ,joueur ,serveur ,langue )
-                        logger .info (
-                        f"📤 [FORTERESSES] Envoi automatique de nouvelles cibles à {user.name} ({user_id}) pour {joueur}."
-                        )
-                        await user .send (embed =embed_cibles ,view =view )
-                    except Exception as e :
-                        logger .error (f"❌ [FORTERESSES] Erreur d'envoi MP à {user_id}: {e}")
-
-            if sessions_modifiees :
-                await save_dungeons_async (data )
-
-        except Exception as e :
-            logger .error (f"❌ [FORTERESSES CRASH] : {traceback.format_exc()}")
-
-
-
-
-    @app_commands .command (name ="history",description ="View a player's fortress attack history (up to 365 days)")
-    @app_commands .autocomplete (player =joueur_autocomplete )
-    @app_commands .allowed_contexts (guilds =True ,dms =True ,private_channels =True )
-    async def f_history (self ,interaction :discord .Interaction ,player :str ):
-        try :
-            await interaction .response .defer (ephemeral =False ,thinking =True )
-        except :
-            return 
-
-        langue ,serveur =await get_server_config (interaction )
-        headers =await get_api_headers (custom_server =serveur )
-        lbl_date =t (langue ,"guerre_lbl_date_data",defaut ="{e_time} **Données datées de :**")
-
-        player_id =None 
-        vrai_nom =player 
-        cache =await get_cached_data (serveur )
-        local_data =cache .get ("players_data",{})
-
-        for p_name ,p_info in local_data .items ():
-            if p_name .lower ()==player .lower ():
-                player_id =str (p_info .get ("player_id",p_info .get ("id","")))
-                vrai_nom =p_name 
-                break 
-
-        if not player_id :
-            try :
-                async with self .bot .session .get (
-                f"{self.base_api}/players/{urllib.parse.quote(player)}",headers =headers ,timeout =8 
-                )as r :
-                    if r .status ==200 :
-                        p_data =await r .json ()
-                        if isinstance (p_data ,list )and p_data :
-                            p_data =p_data [0 ]
-                            player_id =str (p_data .get ("player_id",p_data .get ("id","")))
-                            vrai_nom =p_data .get ("player_name",player )
-            except :
-                pass 
-
-        if not player_id :
-            return await interaction .followup .send (
-            t (
-            langue ,
-            "ev_woa_player_not_found",
-            p =player ,
-            defaut =f"{{e_error}} Joueur **{player}** introuvable sur le serveur {serveur}.",
-            )
+            field_value = "\n".join(chunk)
+            f_title = t(
+                langue,
+                "fort_hist_page_title",
+                curr=page_actuelle,
+                tot=nb_pages,
+                defaut=f"{{e_memberlist}} Rapports journaliers (Page {page_actuelle}/{nb_pages})",
             )
 
 
@@ -856,15 +1005,15 @@ class ForteressesCog (commands .GroupCog ,group_name ="fortress",group_descripti
             t (langue ,"ev_err_tech",e =str (e ),defaut =f"{{e_error}} Erreur technique : {e}")
             )
 
-        if not dungeons :
-            return await interaction .followup .send (
-            t (
-            langue ,
-            "fort_hist_empty",
-            p =vrai_nom ,
-            defaut =f"📭 **{vrai_nom}** n'a attaqué aucune forteresse enregistrée durant l'année écoulée.",
-            )
-            )
+        if not embeds:
+            return
+
+        if len(embeds) == 1:
+            await interaction.followup.send(embed=embeds[0])
+        else:
+            view = PaginationView(embeds)
+            view.message = await interaction.followup.send(embed=embeds[0], view=view, wait=True)
+        await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
 
         dungeons .sort (key =lambda x :x .get ("attacked_at",""),reverse =True )

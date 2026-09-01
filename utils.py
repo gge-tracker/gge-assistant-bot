@@ -11,9 +11,36 @@ from pathlib import Path
 import discord 
 from discord import app_commands 
 
-logger =logging .getLogger ("GGE_Bot")
+logger = logging.getLogger("GGE_Bot")
+#commit
+# ==========================================
+# ⚙️ GESTION DES CHEMINS & DOSSIER
+# ==========================================
+BASE_DIR = Path(__file__).parent
+
+LOCALES_DIR = BASE_DIR / "locales"
+BASE_DATA_PATH = BASE_DIR / "data"
+
+CONFIG_DIR = BASE_DATA_PATH / "configs"
+JOUEURS_DIR = BASE_DATA_PATH / "joueurs"
+SERVEURS_DIR = BASE_DATA_PATH / "serveurs"
+ADMINS_DIR = BASE_DATA_PATH / "admins"
+
+for directory in [CONFIG_DIR, JOUEURS_DIR, SERVEURS_DIR, ADMINS_DIR, LOCALES_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
+
+# ==========================================
+# 🧠 CACHE RAM POUR ÉVITER LE RÉVEIL DU NAS
+# ==========================================
+USERS_CONFIG_CACHE = None
+GUILDS_CONFIG_CACHE = None
+BLOCKS_CACHE = None
 
 
+def clear_config_cache():
+    global USERS_CONFIG_CACHE, GUILDS_CONFIG_CACHE
+    USERS_CONFIG_CACHE = None
+    GUILDS_CONFIG_CACHE = None
 
 
 BASE_DIR =Path (__file__ ).parent 
@@ -32,18 +59,157 @@ for directory in [CONFIG_DIR ,JOUEURS_DIR ,SERVEURS_DIR ,ADMINS_DIR ,LOCALES_DIR
 
 
 
-USERS_CONFIG_CACHE =None 
-GUILDS_CONFIG_CACHE =None 
-BLOCKS_CACHE =None 
+# ===========================================
+# 🌍 MOTEUR DE TRADUCTION (i18n)
+# ===========================================
+try:
+    from emojis import DICT_EMOJIS
+except ImportError as e:
+    logger.error(f"❌ Impossible de charger les émojis suivants : {e}")
+    DICT_EMOJIS = {}
+
+_translations = {}
 
 
-def clear_config_cache ():
-    global USERS_CONFIG_CACHE ,GUILDS_CONFIG_CACHE 
-    USERS_CONFIG_CACHE =None 
-    GUILDS_CONFIG_CACHE =None 
+# Le Gilet Pare-Balles : Si une variable manque, elle ne fait pas planter le bot
+class SafeDict(dict):
+    def __missing__(self, key):
+        return f"{{{key}}}"  # Renvoie {nom_de_la_cle_manquante} au lieu de crasher
+
+
+def charger_langues():
+    _translations.clear()
+    if not LOCALES_DIR.exists():
+        logger.warning(f"⚠️ Le dossier des langues n'existe pas : {LOCALES_DIR}")
+        return
+
+    for fichier in LOCALES_DIR.glob("*.json"):
+        langue = fichier.stem
+        try:
+            with open(fichier, encoding="utf-8") as f:
+                _translations[langue] = json.load(f)
+            logger.info(f"📚 Langue chargée : {langue.upper()} ({len(_translations[langue])} clés)")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du chargement de {fichier.name} : {e}")
+
+
+def t(langue: str, cle: str, defaut: str = None, **kwargs) -> str:
+    dico = _translations.get(langue, _translations.get("fr", {}))
+    texte = dico.get(cle, defaut if defaut else f"[{cle}_MANQUANT]")
+
+    # On fusionne le dictionnaire global des émojis avec tes variables locales
+    variables_fusionnees = {**DICT_EMOJIS, **kwargs}
+
+    if variables_fusionnees:
+        # On utilise format_map avec notre SafeDict pour une sécurité absolue
+        return texte.format_map(SafeDict(**variables_fusionnees))
+
+    return texte
+
+
+# ==========================================
+# 🛠️ OUTILS UNIVERSELS & UI (PAGINATION CORRIGÉE)
+# ==========================================
+class PaginationView(discord.ui.View):
+    def __init__(self, embeds, timeout=3600):
+        super().__init__(timeout=timeout)
+        self.embeds = embeds
+        self.current_page = 0
+        self.message = None
+
+        # Création des boutons dynamiquement pour éviter le crash d'émojis
+        self.btn_prev = discord.ui.Button(
+            emoji=DICT_EMOJIS.get("e_last", "⏮️"), style=discord.ButtonStyle.secondary, custom_id="page_prev"
+        )
+        self.btn_prev.callback = self.cb_prev
+
+        self.btn_next = discord.ui.Button(
+            emoji=DICT_EMOJIS.get("e_next", "⏭️"), style=discord.ButtonStyle.secondary, custom_id="page_next"
+        )
+        self.btn_next.callback = self.cb_next
+
+        self.add_item(self.btn_prev)
+        self.add_item(self.btn_next)
+        self.update_buttons()
+
+    async def on_timeout(self):
+        """Grise tous les boutons de la vue à l'expiration du timeout."""
+        for child in self.children:
+            child.disabled = True
+
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+            except Exception as e:
+                logger.error(f"❌ Erreur désactivation boutons PaginationView : {e}")
+
+    def update_buttons(self):
+        self.btn_prev.disabled = self.current_page == 0
+        self.btn_next.disabled = self.current_page == len(self.embeds) - 1
+
+    async def cb_prev(self, interaction: discord.Interaction):
+        self.current_page = max(0, self.current_page - 1)
+        self.update_buttons()
+        if not self.message:
+            self.message = interaction.message
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+
+    async def cb_next(self, interaction: discord.Interaction):
+        self.current_page = min(len(self.embeds) - 1, self.current_page + 1)
+        self.update_buttons()
+        if not self.message:
+            self.message = interaction.message
+        await interaction.response.edit_message(embed=self.embeds[self.current_page], view=self)
+
+
+class RefreshOnlyView(discord.ui.View):
+    """Une vue avec uniquement un bouton Refresh qui se désactive aussi après un timeout."""
+
+    def __init__(self, callback_func, langue="fr", timeout=3600):
+        super().__init__(timeout=timeout)
+        self.message = None
+        self.callback_func = callback_func
+
+        self.refresh_btn = discord.ui.Button(
+            style=discord.ButtonStyle.primary,
+            emoji=DICT_EMOJIS.get("e_refresh", "🔄"),
+            label=t(langue, "btn_refresh", defaut="Refresh"),
+        )
+        self.refresh_btn.callback = self.cb_refresh
+        self.add_item(self.refresh_btn)
+
+    async def cb_refresh(self, interaction: discord.Interaction):
+        # Sécurisation du message parent
+        if not self.message:
+            self.message = interaction.message
+        await self.callback_func(interaction)
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
+# ==========================================
+# 🎲 MESSAGE SOUTIENS ALEATOIRE
+# ==========================================
+VOTES_FILE = JOUEURS_DIR / "votes.json"
+
+
+async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_percent: int, langue: str = "fr"):
+    """Vérifie si le joueur est protégé par les 7 jours. Sinon, lance le dé."""
+    user_id_str = str(interaction.user.id)
 
 
 
+        except Exception as e:
+            print(f"❌ [DEBUG VOTE] Erreur lors de la lecture du bouclier : {e}")
 
 
 async def get_server_config (interaction :discord .Interaction ):
@@ -52,238 +218,27 @@ async def get_server_config (interaction :discord .Interaction ):
     default_lang ="fr"
     default_server ="E4K_FR1"
 
-
-    if USERS_CONFIG_CACHE is None :
-        path_users =CONFIG_DIR /"users.json"
-        if path_users .exists ():
-            try :
-                with open (path_users ,encoding ="utf-8")as f :
-                    USERS_CONFIG_CACHE =json .load (f )
-            except :
-                USERS_CONFIG_CACHE ={}
-        else :
-            USERS_CONFIG_CACHE ={}
-
-
-    user_id =str (interaction .user .id )
-    if user_id in USERS_CONFIG_CACHE :
-        u_lang =USERS_CONFIG_CACHE [user_id ].get ("langue",default_lang )
-        u_srv =USERS_CONFIG_CACHE [user_id ].get ("gge_server",default_server )
-        return u_lang ,u_srv 
-
-
-    if interaction .guild :
-        if GUILDS_CONFIG_CACHE is None :
-            path_guilds =CONFIG_DIR /"serveurs.json"
-            if path_guilds .exists ():
-                try :
-                    with open (path_guilds ,encoding ="utf-8")as f :
-                        GUILDS_CONFIG_CACHE =json .load (f )
-                except :
-                    GUILDS_CONFIG_CACHE ={}
-            else :
-                GUILDS_CONFIG_CACHE ={}
-
-        guild_id =str (interaction .guild .id )
-        if guild_id in GUILDS_CONFIG_CACHE :
-            g_lang =GUILDS_CONFIG_CACHE [guild_id ].get ("langue",default_lang )
-            g_srv =GUILDS_CONFIG_CACHE [guild_id ].get ("gge_server",default_server )
-            return g_lang ,g_srv 
-
-    return default_lang ,default_server 
-
-
-async def get_api_headers (interaction :discord .Interaction =None ,custom_server :str =None ):
-    server ="E4K_FR1"
-    if custom_server :
-        server =custom_server 
-    elif interaction :
-        _ ,server =await get_server_config (interaction )
-
-    return {"accept":"application/json","gge-server":server ,"User-Agent":"Mozilla/5.0 GGE-Assistant/2.0"}
-
-
-
-
-
-try :
-    from emojis import DICT_EMOJIS 
-except ImportError as e :
-    logger .error (f"❌ Impossible de charger les émojis suivants : {e}")
-    DICT_EMOJIS ={}
-
-_translations ={}
-
-
-
-class SafeDict (dict ):
-    def __missing__ (self ,key ):
-        return f"{{{key}}}"
-
-
-def charger_langues ():
-    _translations .clear ()
-    if not LOCALES_DIR .exists ():
-        logger .warning (f"⚠️ Le dossier des langues n'existe pas : {LOCALES_DIR}")
-        return 
-
-    for fichier in LOCALES_DIR .glob ("*.json"):
-        langue =fichier .stem 
-        try :
-            with open (fichier ,encoding ="utf-8")as f :
-                _translations [langue ]=json .load (f )
-            logger .info (f"📚 Langue chargée : {langue.upper()} ({len(_translations[langue])} clés)")
-        except Exception as e :
-            logger .error (f"❌ Erreur lors du chargement de {fichier.name} : {e}")
-
-
-def t (langue :str ,cle :str ,defaut :str =None ,**kwargs )->str :
-    dico =_translations .get (langue ,_translations .get ("fr",{}))
-    texte =dico .get (cle ,defaut if defaut else f"[{cle}_MANQUANT]")
-
-
-    variables_fusionnees ={**DICT_EMOJIS ,**kwargs }
-
-    if variables_fusionnees :
-
-        return texte .format_map (SafeDict (**variables_fusionnees ))
-
-    return texte 
-
-
-
-
-
-class PaginationView (discord .ui .View ):
-    def __init__ (self ,embeds ,timeout =3600 ):
-        super ().__init__ (timeout =timeout )
-        self .embeds =embeds 
-        self .current_page =0 
-        self .message =None 
-
-
-        self .btn_prev =discord .ui .Button (
-        emoji =DICT_EMOJIS .get ("e_last","⏮️"),style =discord .ButtonStyle .secondary ,custom_id ="page_prev"
-        )
-        self .btn_prev .callback =self .cb_prev 
-
-        self .btn_next =discord .ui .Button (
-        emoji =DICT_EMOJIS .get ("e_next","⏭️"),style =discord .ButtonStyle .secondary ,custom_id ="page_next"
-        )
-        self .btn_next .callback =self .cb_next 
-
-        self .add_item (self .btn_prev )
-        self .add_item (self .btn_next )
-        self .update_buttons ()
-
-    async def on_timeout (self ):
-        """Grise tous les boutons de la vue à l'expiration du timeout."""
-        for child in self .children :
-            child .disabled =True 
-
-        if self .message :
-            try :
-                await self .message .edit (view =self )
-            except discord .HTTPException :
-                pass 
-            except Exception as e :
-                logger .error (f"❌ Erreur désactivation boutons PaginationView : {e}")
-
-    def update_buttons (self ):
-        self .btn_prev .disabled =self .current_page ==0 
-        self .btn_next .disabled =self .current_page ==len (self .embeds )-1 
-
-    async def cb_prev (self ,interaction :discord .Interaction ):
-        self .current_page =max (0 ,self .current_page -1 )
-        self .update_buttons ()
-        if not self .message :
-            self .message =interaction .message 
-        await interaction .response .edit_message (embed =self .embeds [self .current_page ],view =self )
-
-    async def cb_next (self ,interaction :discord .Interaction ):
-        self .current_page =min (len (self .embeds )-1 ,self .current_page +1 )
-        self .update_buttons ()
-        if not self .message :
-            self .message =interaction .message 
-        await interaction .response .edit_message (embed =self .embeds [self .current_page ],view =self )
-
-
-class RefreshOnlyView (discord .ui .View ):
-    """Une vue avec uniquement un bouton Refresh qui se désactive aussi après un timeout."""
-
-    def __init__ (self ,callback_func ,langue ="fr",timeout =3600 ):
-        super ().__init__ (timeout =timeout )
-        self .message =None 
-        self .callback_func =callback_func 
-
-        self .refresh_btn =discord .ui .Button (
-        style =discord .ButtonStyle .primary ,
-        emoji =DICT_EMOJIS .get ("e_refresh","🔄"),
-        label =t (langue ,"btn_refresh",defaut ="Refresh"),
-        )
-        self .refresh_btn .callback =self .cb_refresh 
-        self .add_item (self .refresh_btn )
-
-    async def cb_refresh (self ,interaction :discord .Interaction ):
-
-        if not self .message :
-            self .message =interaction .message 
-        await self .callback_func (interaction )
-
-    async def on_timeout (self ):
-        for child in self .children :
-            child .disabled =True 
-        if self .message :
-            try :
-                await self .message .edit (view =self )
-            except discord .HTTPException :
-                pass 
-
-
-
-
-
-VOTES_FILE =JOUEURS_DIR /"votes.json"
-
-
-async def prompt_vote_if_lucky (interaction :discord .Interaction ,probability_percent :int ,langue :str ="fr"):
-    """Vérifie si le joueur est protégé par les 7 jours. Sinon, lance le dé."""
-    user_id_str =str (interaction .user .id )
-
-
-    if VOTES_FILE .exists ():
-        try :
-            with open (VOTES_FILE ,encoding ="utf-8")as f :
-                votes_data =json .load (f )
-
-            if user_id_str in votes_data :
-                deadline =datetime .fromisoformat (votes_data [user_id_str ])
-                if datetime .now ()<deadline :
-                    return 
-
-        except Exception as e :
-            print (f"❌ [DEBUG VOTE] Erreur lors de la lecture du bouclier : {e}")
-
-
-    if random .randint (1 ,100 )>probability_percent :
-        return 
-
-
-    vote_url ="https://top.gg/bot/1472309793065533493/vote"
-    review_url ="https://top.gg/bot/1472309793065533493#reviews"
-
-
-    btn_vote_lbl =t (langue ,"vote_prompt_btn",defaut ="Voter (1 clic)")
-    btn_review_lbl =t (langue ,"review_prompt_btn",defaut ="Laisser un avis")
-    titre_txt =t (langue ,"vote_prompt_title",defaut ="⭐ Coucou ! Un petit service ?")
-
-    desc_txt =t (
-    langue ,
-    "vote_prompt_desc",
-    defaut ="Tu utilises souvent cette commande ! Si GGE Assistant t'aide au quotidien, prends quelques secondes pour voter ou nous laisser un petit avis sur Top.gg. C'est gratuit et ça nous aide énormément ! ❤️\n\n*(Ce message disparaîtra pendant 7 jours après ton vote !)*",
+    desc_txt = t(
+        langue,
+        "vote_prompt_desc",
+        defaut="Tu utilises souvent cette commande ! Si GGE Assistant t'aide au quotidien, prends quelques secondes pour voter ou nous laisser un petit avis sur Top.gg. C'est gratuit et ça nous aide énormément ! ❤️\n\n*(Ce message disparaîtra pendant 7 jours après ton vote !)*",
     )
 
-    view =discord .ui .View ()
+    view = discord.ui.View()
+
+    # Utilisation du dictionnaire d'émojis
+    btn_vote = discord.ui.Button(label=btn_vote_lbl, url=vote_url, emoji=DICT_EMOJIS.get("e_sparkles", "✨"))
+    view.add_item(btn_vote)
+
+    btn_review = discord.ui.Button(label=btn_review_lbl, url=review_url, emoji=DICT_EMOJIS.get("e_main", "⭐"))
+    view.add_item(btn_review)
+
+    embed = discord.Embed(title=titre_txt, description=desc_txt, color=discord.Color.random())
+
+    try:
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+    except Exception:
+        pass
 
 
     btn_vote =discord .ui .Button (label =btn_vote_lbl ,url =vote_url ,emoji =DICT_EMOJIS .get ("e_sparkles","✨"))
@@ -314,47 +269,47 @@ def _get_api_timestamp (*sources ):
         if isinstance (obj ,dict ):
             for k ,v in obj .items ():
                 if k in [
-                "updated_at",
-                "updatedAt",
-                "last_update",
-                "date",
-                "collected_at",
-                "last_collected_at",
-                "attacked_at",
-                ]and isinstance (v ,str ):
-                    if len (v )>=10 and v [4 ]=="-":
-                        dates_trouvees .append (v )
+                    "updated_at",
+                    "updatedAt",
+                    "last_update",
+                    "date",
+                    "collected_at",
+                    "last_collected_at",
+                    "attacked_at",
+                ] and isinstance(v, str):
+                    if len(v) >= 10 and v[4] == "-":
+                        dates_trouvees.append(v)
 
-            for v in obj .values ():
-                if isinstance (v ,(dict ,list )):
-                    search_ts (v )
+            for v in obj.values():
+                if isinstance(v, (dict, list)):
+                    search_ts(v)
 
-        elif isinstance (obj ,list ):
-            for item in obj :
-                if isinstance (item ,(dict ,list )):
-                    search_ts (item )
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    search_ts(item)
 
-    for src in sources :
-        if src :
-            search_ts (src )
+    for src in sources:
+        if src:
+            search_ts(src)
 
-    if dates_trouvees :
-        try :
-            latest_str =max (dates_trouvees )
-            return datetime .fromisoformat (latest_str .replace ("Z","+00:00"))
-        except :
-            pass 
+    if dates_trouvees:
+        try:
+            latest_str = max(dates_trouvees)
+            return datetime.fromisoformat(latest_str.replace("Z", "+00:00"))
+        except:
+            pass
 
-    return discord .utils .utcnow ()
+    return discord.utils.utcnow()
 
 
-def format_num (n ):
-    try :
-        n =int (n )
-        signe ="-"if n <0 else ""
-        n =abs (n )
+def format_num(n):
+    try:
+        n = int(n)
+        signe = "-" if n < 0 else ""
+        n = abs(n)
 
-        if n >=1_000_000_000 :
+        if n >= 1_000_000_000:
             return f"{signe}{n / 1_000_000_000:.1f}B"
         if n >=1_000_000 :
             return f"{signe}{n / 1_000_000:.1f}M"
@@ -614,12 +569,12 @@ custom_server :str =None ,
     active_current_count =sum (1 for pid in alliance_members if latest_points .get (pid ,{}).get ("point",0 )>0 )
     taux_participation =(active_current_count /total_current_members )*100 if total_current_members >0 else 0.0 
 
-    lignes_classement =[]
-    for j ,(name ,score )in enumerate (active_players ):
-        medal ="🥇"if j ==0 else "🥈"if j ==1 else "🥉"if j ==2 else f"**{j + 1}.**"
-        lignes_classement .append (f"{medal} **{name}** ➔ **{format_num(score)} pts**")
-    for name in zero_players :
-        lignes_classement .append (f"{DICT_EMOJIS.get('e_movements', '🚶‍♂️')} **{name}** ➔ **0 pts**")
+    lignes_classement = []
+    for j, (name, score) in enumerate(active_players):
+        medal = "🥇" if j == 0 else "🥈" if j == 1 else "🥉" if j == 2 else f"**{j + 1}.**"
+        lignes_classement.append(f"{medal} **{name}** ➔ **{format_num(score)} pts**")
+    for name in zero_players:
+        lignes_classement.append(f"{DICT_EMOJIS.get('e_movements', '🚶‍♂️')} **{name}** ➔ **0 pts**")
 
     stats_text =t (
     langue ,
@@ -631,39 +586,39 @@ custom_server :str =None ,
     defaut =f"**Points Totaux** : **{format_num(total_score)}**\n**Participation** : {taux_participation:.1f}% ({active_current_count}/{total_current_members} membres)",
     )
 
-    embed =discord .Embed (
-    title =f"{DICT_EMOJIS.get('e_alliance_icon', '🛡️')} {alliance_name} - {event_name}",
-    color =clr_alliance ,
-    timestamp =discord .utils .utcnow (),
+    embed = discord.Embed(
+        title=f"{DICT_EMOJIS.get('e_alliance_icon', '🛡️')} {alliance_name} - {event_name}",
+        color=clr_alliance,
+        timestamp=discord.utils.utcnow(),
     )
-    embed .add_field (
-    name =t (langue ,"utils_embed_stats_title",defaut ="{e_stats} Statistiques"),
-    value =stats_text ,
-    inline =False ,
+    embed.add_field(
+        name=t(langue, "utils_embed_stats_title", defaut="{e_stats} Statistiques"),
+        value=stats_text,
+        inline=False,
     )
 
-    chunk_txt =""
-    part_num =1 
-    for ligne in lignes_classement :
-        if len (chunk_txt )+len (ligne )+1 >1024 :
-            part_title =t (
-            langue ,
-            "utils_embed_ranking_part",
-            part_num =part_num ,
-            defaut =f"{{e_ranking}} Classement (Partie {part_num})",
+    chunk_txt = ""
+    part_num = 1
+    for ligne in lignes_classement:
+        if len(chunk_txt) + len(ligne) + 1 > 1024:
+            part_title = t(
+                langue,
+                "utils_embed_ranking_part",
+                part_num=part_num,
+                defaut=f"{{e_ranking}} Classement (Partie {part_num})",
             )
-            embed .add_field (name =part_title ,value =chunk_txt ,inline =False )
-            chunk_txt =ligne +"\n"
-            part_num +=1 
-        else :
-            chunk_txt +=ligne +"\n"
+            embed.add_field(name=part_title, value=chunk_txt, inline=False)
+            chunk_txt = ligne + "\n"
+            part_num += 1
+        else:
+            chunk_txt += ligne + "\n"
 
-    if chunk_txt :
-        part_title =t (
-        langue ,
-        "utils_embed_ranking_part",
-        part_num =part_num ,
-        defaut =f"{{e_ranking}} Classement (Partie {part_num})",
+    if chunk_txt:
+        part_title = t(
+            langue,
+            "utils_embed_ranking_part",
+            part_num=part_num,
+            defaut=f"{{e_ranking}} Classement (Partie {part_num})",
         )
         embed .add_field (name =part_title ,value =chunk_txt ,inline =False )
 
@@ -678,218 +633,218 @@ custom_server :str =None ,
 
         embed .add_field (name =update_title ,value =update_text ,inline =False )
 
-    return embed ,lignes_classement ,stats_text ,global_latest_str 
+    return embed, lignes_classement, stats_text, global_latest_str
 
 
+# =========================================
+# ⚙️ VARIABLES GLOBALES & CACHE
+# =========================================
+MON_ID_DISCORD = int(os.getenv("MON_ID_DISCORD", 0))
+TOKEN = os.getenv("DISCORD_TOKEN")
+TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
 
+CACHE = {}
 
-
-MON_ID_DISCORD =int (os .getenv ("MON_ID_DISCORD",0 ))
-TOKEN =os .getenv ("DISCORD_TOKEN")
-TOPGG_TOKEN =os .getenv ("TOPGG_TOKEN")
-
-CACHE ={}
-
-TRACKER_EVENTS ={
-"Nomades":["player_event_nomad_history"],
-"Nomad Invasion":["player_event_nomad_history"],
-"Samouraïs":["player_event_samurai_history"],
-"Samurai Invasion":["player_event_samurai_history"],
-"Corbeaux de Sang":["player_event_bloodcrow_history"],
-"Bloodcrow Invasion":["player_event_bloodcrow_history"],
-"Guerre des Royaumes":["player_event_war_realms_history"],
-"War of the Realms":["player_event_war_realms_history"],
-"Îles Orageuses":["aquamarine"],
-"Storm Islands":["aquamarine"],
-"Bataille de Bérimond":["player_event_berimond_invasion_history","player_event_berimond_kingdom_history"],
-"Battle of Berimond":["player_event_berimond_invasion_history","player_event_berimond_kingdom_history"],
+TRACKER_EVENTS = {
+    "Nomades": ["player_event_nomad_history"],
+    "Nomad Invasion": ["player_event_nomad_history"],
+    "Samouraïs": ["player_event_samurai_history"],
+    "Samurai Invasion": ["player_event_samurai_history"],
+    "Corbeaux de Sang": ["player_event_bloodcrow_history"],
+    "Bloodcrow Invasion": ["player_event_bloodcrow_history"],
+    "Guerre des Royaumes": ["player_event_war_realms_history"],
+    "War of the Realms": ["player_event_war_realms_history"],
+    "Îles Orageuses": ["aquamarine"],
+    "Storm Islands": ["aquamarine"],
+    "Bataille de Bérimond": ["player_event_berimond_invasion_history", "player_event_berimond_kingdom_history"],
+    "Battle of Berimond": ["player_event_berimond_invasion_history", "player_event_berimond_kingdom_history"],
 }
 
+# ==========================================
+# 🔐 MOTEUR DE VERROUILLAGE ASYNCHRONE
+# ==========================================
+FILE_LOCKS = {}
 
 
-
-FILE_LOCKS ={}
-
-
-def get_file_lock (filepath ):
-    path_key =str (Path (filepath ).resolve ())
-    if path_key not in FILE_LOCKS :
-        FILE_LOCKS [path_key ]=asyncio .Lock ()
-    return FILE_LOCKS [path_key ]
+def get_file_lock(filepath):
+    path_key = str(Path(filepath).resolve())
+    if path_key not in FILE_LOCKS:
+        FILE_LOCKS[path_key] = asyncio.Lock()
+    return FILE_LOCKS[path_key]
 
 
+# ==========================================
+# 🔧 Footer global
+# ==========================================
+BOT_VERSION = "GGE Assistant • Version 1.2.5"
 
 
-
-BOT_VERSION ="GGE Assistant • Version 1.2.5"
-
-
-async def setup_embed_footer (
-embed :discord .Embed ,interaction :discord .Interaction =None ,langue :str ="fr",custom_server :str =None 
+async def setup_embed_footer(
+    embed: discord.Embed, interaction: discord.Interaction = None, langue: str = "fr", custom_server: str = None
 ):
-    txt =BOT_VERSION 
-    if custom_server :
-        txt +=f" • {custom_server}"
-    elif interaction :
-        _ ,server =await get_server_config (interaction )
-        txt +=f" • {server}"
-    embed .set_footer (text =txt )
+    txt = BOT_VERSION
+    if custom_server:
+        txt += f" • {custom_server}"
+    elif interaction:
+        _, server = await get_server_config(interaction)
+        txt += f" • {server}"
+    embed.set_footer(text=txt)
 
 
+# ==========================================
+# 🔧 MAINTENANCE & CACHES JSON
+# ==========================================
+def load_maintenance():
+    path = ADMINS_DIR / "maintenance.json"
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f).get("maintenance_mode", False)
+        except Exception as e:
+            logger.error(f"❌ Impossible de lire maintenance.json : {e}")
+    return False
 
 
+async def load_blocks_async():
+    global BLOCKS_CACHE
+    if BLOCKS_CACHE is not None:
+        return BLOCKS_CACHE
 
-def load_maintenance ():
-    path =ADMINS_DIR /"maintenance.json"
-    if os .path .exists (path ):
-        try :
-            with open (path ,encoding ="utf-8")as f :
-                return json .load (f ).get ("maintenance_mode",False )
-        except Exception as e :
-            logger .error (f"❌ Impossible de lire maintenance.json : {e}")
-    return False 
+    path = ADMINS_DIR / "blocks.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    BLOCKS_CACHE = json.load(f)
+                    return BLOCKS_CACHE
+            except Exception as e:
+                logger.error(f"❌ Fichier blocks.json corrompu ou illisible : {e}")
 
-
-async def load_blocks_async ():
-    global BLOCKS_CACHE 
-    if BLOCKS_CACHE is not None :
-        return BLOCKS_CACHE 
-
-    path =ADMINS_DIR /"blocks.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    BLOCKS_CACHE =json .load (f )
-                    return BLOCKS_CACHE 
-            except Exception as e :
-                logger .error (f"❌ Fichier blocks.json corrompu ou illisible : {e}")
-
-    BLOCKS_CACHE ={"global_commands":{},"blocked_users":{}}
-    return BLOCKS_CACHE 
+    BLOCKS_CACHE = {"global_commands": {}, "blocked_users": {}}
+    return BLOCKS_CACHE
 
 
-async def save_blocks_async (data ):
-    global BLOCKS_CACHE 
-    BLOCKS_CACHE =data 
-    path =ADMINS_DIR /"blocks.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump (data ,f ,indent =4 ,ensure_ascii =False )
+async def save_blocks_async(data):
+    global BLOCKS_CACHE
+    BLOCKS_CACHE = data
+    path = ADMINS_DIR / "blocks.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-async def load_configuration_async ():
-    path =CONFIG_DIR /"configuration.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    return json .load (f )
-            except Exception as e :
-                logger .error (f"❌ Erreur configuration.json : {e}")
-        return {"servers_info":{}}
+async def load_configuration_async():
+    path = CONFIG_DIR / "configuration.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"❌ Erreur configuration.json : {e}")
+        return {"servers_info": {}}
 
 
-async def save_configuration_async (data ):
-    path =CONFIG_DIR /"configuration.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump (data ,f ,indent =4 ,ensure_ascii =False )
+async def save_configuration_async(data):
+    path = CONFIG_DIR / "configuration.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-async def load_pseudos_async ():
-    path =JOUEURS_DIR /"discord_pseudos.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    return json .load (f )
-            except Exception as e :
-                logger .error (f"❌ Erreur discord_pseudos.json : {e}")
+async def load_pseudos_async():
+    path = JOUEURS_DIR / "discord_pseudos.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"❌ Erreur discord_pseudos.json : {e}")
     return {}
 
 
-async def save_pseudos_async (data ):
-    path =JOUEURS_DIR /"discord_pseudos.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump (data ,f ,indent =4 )
+async def save_pseudos_async(data):
+    path = JOUEURS_DIR / "discord_pseudos.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
 
-async def load_rivals_async ():
-    path =JOUEURS_DIR /"rival_radar.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    return json .load (f )
-            except Exception as e :
-                logger .error (f"❌ Erreur rival_radar.json : {e}")
+async def load_rivals_async():
+    path = JOUEURS_DIR / "rival_radar.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"❌ Erreur rival_radar.json : {e}")
     return {}
 
 
-async def save_rivals_async (data ):
-    path =JOUEURS_DIR /"rival_radar.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump (data ,f ,indent =4 )
+async def save_rivals_async(data):
+    path = JOUEURS_DIR / "rival_radar.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
 
-async def load_dungeons_async ():
-    path =JOUEURS_DIR /"forteresses_sessions.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    return json .load (f )
-            except Exception as e :
-                logger .error (f"❌ Erreur forteresses_sessions.json : {e}")
-    return {"sessions":{}}
+async def load_dungeons_async():
+    path = JOUEURS_DIR / "forteresses_sessions.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"❌ Erreur forteresses_sessions.json : {e}")
+    return {"sessions": {}}
 
 
-async def save_dungeons_async (data ):
-    path =JOUEURS_DIR /"forteresses_sessions.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump (data ,f ,indent =4 )
+async def save_dungeons_async(data):
+    path = JOUEURS_DIR / "forteresses_sessions.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
 
-async def load_maintenance_async ():
-    path =ADMINS_DIR /"maintenance.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    return json .load (f ).get ("maintenance_mode",False )
-            except Exception as e :
-                logger .error (f"❌ Erreur maintenance.json : {e}")
-    return False 
+async def load_maintenance_async():
+    path = ADMINS_DIR / "maintenance.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return json.load(f).get("maintenance_mode", False)
+            except Exception as e:
+                logger.error(f"❌ Erreur maintenance.json : {e}")
+    return False
 
 
-async def save_maintenance_async (etat ):
-    path =ADMINS_DIR /"maintenance.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump ({"maintenance_mode":etat },f )
+async def save_maintenance_async(etat):
+    path = ADMINS_DIR / "maintenance.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"maintenance_mode": etat}, f)
 
 
-async def load_surveillance_async ():
-    path =JOUEURS_DIR /"surveillance.json"
-    async with get_file_lock (path ):
-        if os .path .exists (path ):
-            try :
-                with open (path ,encoding ="utf-8")as f :
-                    data =json .load (f )
-                    if "alliances"not in data :
-                        data ["alliances"]={}
-                    return data 
-            except Exception as e :
-                logger .error (f"❌ Erreur surveillance.json : {e}")
-    return {"players":{},"alliances":{}}
+async def load_surveillance_async():
+    path = JOUEURS_DIR / "surveillance.json"
+    async with get_file_lock(path):
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                    if "alliances" not in data:
+                        data["alliances"] = {}
+                    return data
+            except Exception as e:
+                logger.error(f"❌ Erreur surveillance.json : {e}")
+    return {"players": {}, "alliances": {}}
 
 
-async def save_surveillance_async (data ):
-    path =JOUEURS_DIR /"surveillance.json"
-    async with get_file_lock (path ):
-        with open (path ,"w",encoding ="utf-8")as f :
-            json .dump (data ,f ,indent =4 )
+async def save_surveillance_async(data):
+    path = JOUEURS_DIR / "surveillance.json"
+    async with get_file_lock(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
