@@ -23,7 +23,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Run comment stripper
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run comment stripper and formatter
         run: python strip_comments.py
 
       - name: Push clean code to main
