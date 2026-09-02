@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import traceback
 from datetime import UTC, datetime, time
 from pathlib import Path
@@ -161,9 +162,10 @@ class ScanCog(commands.Cog):
         return all_players, duration
 
     def save_results(self, players_data, duration, serveur):
-        """Sauvegarde les résultats en JSON (Fonction bloquante isolée)"""
+        """Sauvegarde les résultats en JSON (Fonction bloquante isolée) et nettoie les anciens"""
         today = datetime.now().strftime("%Y-%m-%d")
-        daily_dir = self.base_output_dir / serveur / today
+        server_dir = self.base_output_dir / serveur
+        daily_dir = server_dir / today
         daily_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%H%M%S")
@@ -182,6 +184,20 @@ class ScanCog(commands.Cog):
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
+
+        # ==========================================
+        # SYSTÈME DE NETTOYAGE DES ANCIENS FICHIERS
+        # ==========================================
+        try:
+            date_dirs = sorted([d for d in server_dir.iterdir() if d.is_dir()])
+            
+            if len(date_dirs) > 3:
+                dirs_to_remove = date_dirs[:-3]
+                for d in dirs_to_remove:
+                    shutil.rmtree(d)
+                    logger.info(f"🧹 Nettoyage : dossier obsolète {d.name} supprimé pour {serveur}.")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du nettoyage des vieux scans pour {serveur} : {e}")
 
         return filepath
 
