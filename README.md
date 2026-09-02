@@ -6,9 +6,10 @@
     <img alt="Python Version" src="https://img.shields.io/badge/python-3.11-blue.svg"/>
     <img alt="Empire-API" src="https://img.shields.io/badge/Empire--API-Bridge-339933.svg?logo=nodedotjs"/>
     <img alt="Discord.py" src="https://img.shields.io/badge/discord.py-%3E%3D2.4.0-blue.svg"/>
-    <img alt="Docker" src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker"/>
+    <img alt="GGE Tracker API" src="https://img.shields.io/badge/GGE--Tracker-API%20v1-4caf50.svg"/>
     <img alt="Top.gg" src="https://img.shields.io/badge/Top.gg-Webhook-ff3366.svg"/>
-    <img alt="GGE Tracker API" src="https://img.shields.io/badge/GGE--Tracker-API-4caf50.svg"/>
+    <img alt="Docker" src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker"/>
+    <img alt="Storage" src="https://img.shields.io/badge/storage-JSON-7c3aed.svg"/>
 </p>
 
 <p align="center">
