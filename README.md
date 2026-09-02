@@ -35,6 +35,7 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 ```bash
 .
 ├── Dockerfile
+├── LICENSE
 ├── README.md
 ├── assets
 │   └── logo.webp
@@ -66,7 +67,7 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 ├── ruff.toml
 └── utils.py
 
-6 directories, 26 files
+6 directories, 27 files
 ```
 <!-- TREE-END -->
 *(This section is auto-updated via GitHub Actions)*
