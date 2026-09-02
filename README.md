@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="./assets/logo.png" alt="GGE Assistant Logo" width="150"/>
+    <img src="./assets/logo.webp" alt="GGE Assistant Logo" width="150"/>
 </p>
 
 <p align="center">
@@ -32,38 +32,37 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 ├── Dockerfile
 ├── README.md
 ├── assets
-│   └── logo.webp
+│   └── logo.webp
 ├── cogs
-│   ├── admin.py
-│   ├── aide.py
-│   ├── calendrier.py
-│   ├── classement.py
-│   ├── config.py
-│   ├── events.py
-│   ├── forteresses.py
-│   ├── profils.py
-│   ├── radar.py
-│   ├── scan_server.py
-│   ├── storms.py
-│   └── target.py
+│   ├── admin.py
+│   ├── aide.py
+│   ├── calendrier.py
+│   ├── classement.py
+│   ├── config.py
+│   ├── events.py
+│   ├── forteresses.py
+│   ├── profils.py
+│   ├── radar.py
+│   ├── scan_server.py
+│   ├── storms.py
+│   └── target.py
 ├── data
-│   └── configs
-│       ├── configuration.json
-│       └── event_mapping.json
+│   └── configs
+│       ├── configuration.json
+│       └── event_mapping.json
 ├── discord_bot.py
 ├── docker-compose.yaml
 ├── emojis.py
 ├── locales
-│   ├── de.json
-│   ├── en.json
-│   └── fr.json
+│   ├── de.json
+│   ├── en.json
+│   └── fr.json
 ├── requirements.txt
 ├── ruff.toml
 ├── strip_comments.py
-├── tree_tmp.txt
 └── utils.py
 
-6 directories, 28 files
+6 directories, 27 files
 ```
 <!-- TREE-END -->
 *(This section can be auto-updated via GitHub Actions)*
@@ -80,7 +79,7 @@ The bot is designed to run efficiently via Docker Compose.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USER/gge-assistant.git && cd gge-assistant
+git clone [https://github.com/YOUR_USER/gge-assistant.git](https://github.com/YOUR_USER/gge-assistant.git) && cd gge-assistant
 
 # 2. Configure environment variables
 # Requires TOKEN, TOPGG_TOKEN, TOPGG_WEBHOOK_SECRET, and WEBHOOK_SYSTEM
@@ -88,8 +87,12 @@ cp .env.example .env
 nano .env
 
 # 3. Start the bot via Docker
-docker-compose up -d --build```
+docker-compose up -d --build
+```
 
+## 🗺️ Architecture Diagram
+
+```mermaid
 graph TD
     %% ==== EXTERNAL SOURCES ====
     discord_api[🌐 Discord API]
@@ -124,3 +127,4 @@ graph TD
     class bot,webhook core
     class db_configs,db_players,db_scans data
     style nas fill:#f0f7ff,stroke:#2563eb,stroke-width:2px,color:#172554
+```
