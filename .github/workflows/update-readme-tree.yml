@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get install -y tree
           echo '```bash' > tree_tmp.txt
-          tree -L 3 -I '.git|node_modules|dist|__pycache__|.env|tmp|logs' >> tree_tmp.txt
+          tree -L 3 -I '.git|.github|node_modules|dist|__pycache__|.env|tmp|logs|tree_tmp.txt' >> tree_tmp.txt
           echo '```' >> tree_tmp.txt
           sed -i '/<!-- TREE-START -->/,/<!-- TREE-END -->/!b;//!d;/<!-- TREE-START -->/r tree_tmp.txt' README.md
           rm tree_tmp.txt
