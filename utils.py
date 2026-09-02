@@ -1,21 +1,19 @@
-import asyncio 
-import json 
-import logging 
-import os 
-import random 
-import time 
-import urllib .parse 
-from datetime import datetime ,timedelta 
-from pathlib import Path 
+import asyncio
+import json
+import logging
+import os
+import random
+import time
+import urllib.parse
+from datetime import datetime, timedelta
+from pathlib import Path
 
-import discord 
-from discord import app_commands 
+import discord
+from discord import app_commands
 
 logger = logging.getLogger("GGE_Bot")
-#commit
-# ==========================================
-# ⚙️ GESTION DES CHEMINS & DOSSIER
-# ==========================================
+
+
 BASE_DIR = Path(__file__).parent
 
 LOCALES_DIR = BASE_DIR / "locales"
@@ -29,9 +27,7 @@ ADMINS_DIR = BASE_DATA_PATH / "admins"
 for directory in [CONFIG_DIR, JOUEURS_DIR, SERVEURS_DIR, ADMINS_DIR, LOCALES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# ==========================================
-# 🧠 CACHE RAM POUR ÉVITER LE RÉVEIL DU NAS
-# ==========================================
+
 USERS_CONFIG_CACHE = None
 GUILDS_CONFIG_CACHE = None
 BLOCKS_CACHE = None
@@ -43,25 +39,60 @@ def clear_config_cache():
     GUILDS_CONFIG_CACHE = None
 
 
-BASE_DIR =Path (__file__ ).parent 
+async def get_server_config(interaction: discord.Interaction):
+    global USERS_CONFIG_CACHE, GUILDS_CONFIG_CACHE
 
-LOCALES_DIR =BASE_DIR /"locales"
-BASE_DATA_PATH =BASE_DIR /"data"
+    default_lang = "fr"
+    default_server = "E4K_FR1"
 
-CONFIG_DIR =BASE_DATA_PATH /"configs"
-JOUEURS_DIR =BASE_DATA_PATH /"joueurs"
-SERVEURS_DIR =BASE_DATA_PATH /"serveurs"
-ADMINS_DIR =BASE_DATA_PATH /"admins"
+    if USERS_CONFIG_CACHE is None:
+        path_users = CONFIG_DIR / "users.json"
+        if path_users.exists():
+            try:
+                with open(path_users, encoding="utf-8") as f:
+                    USERS_CONFIG_CACHE = json.load(f)
+            except:
+                USERS_CONFIG_CACHE = {}
+        else:
+            USERS_CONFIG_CACHE = {}
 
-for directory in [CONFIG_DIR ,JOUEURS_DIR ,SERVEURS_DIR ,ADMINS_DIR ,LOCALES_DIR ]:
-    directory .mkdir (parents =True ,exist_ok =True )
+    user_id = str(interaction.user.id)
+    if user_id in USERS_CONFIG_CACHE:
+        u_lang = USERS_CONFIG_CACHE[user_id].get("langue", default_lang)
+        u_srv = USERS_CONFIG_CACHE[user_id].get("gge_server", default_server)
+        return u_lang, u_srv
+
+    if interaction.guild:
+        if GUILDS_CONFIG_CACHE is None:
+            path_guilds = CONFIG_DIR / "serveurs.json"
+            if path_guilds.exists():
+                try:
+                    with open(path_guilds, encoding="utf-8") as f:
+                        GUILDS_CONFIG_CACHE = json.load(f)
+                except:
+                    GUILDS_CONFIG_CACHE = {}
+            else:
+                GUILDS_CONFIG_CACHE = {}
+
+        guild_id = str(interaction.guild.id)
+        if guild_id in GUILDS_CONFIG_CACHE:
+            g_lang = GUILDS_CONFIG_CACHE[guild_id].get("langue", default_lang)
+            g_srv = GUILDS_CONFIG_CACHE[guild_id].get("gge_server", default_server)
+            return g_lang, g_srv
+
+    return default_lang, default_server
 
 
+async def get_api_headers(interaction: discord.Interaction = None, custom_server: str = None):
+    server = "E4K_FR1"
+    if custom_server:
+        server = custom_server
+    elif interaction:
+        _, server = await get_server_config(interaction)
+
+    return {"accept": "application/json", "gge-server": server, "User-Agent": "Mozilla/5.0 GGE-Assistant/2.0"}
 
 
-# ===========================================
-# 🌍 MOTEUR DE TRADUCTION (i18n)
-# ===========================================
 try:
     from emojis import DICT_EMOJIS
 except ImportError as e:
@@ -71,10 +102,9 @@ except ImportError as e:
 _translations = {}
 
 
-# Le Gilet Pare-Balles : Si une variable manque, elle ne fait pas planter le bot
 class SafeDict(dict):
     def __missing__(self, key):
-        return f"{{{key}}}"  # Renvoie {nom_de_la_cle_manquante} au lieu de crasher
+        return f"{{{key}}}"
 
 
 def charger_langues():
@@ -97,19 +127,14 @@ def t(langue: str, cle: str, defaut: str = None, **kwargs) -> str:
     dico = _translations.get(langue, _translations.get("fr", {}))
     texte = dico.get(cle, defaut if defaut else f"[{cle}_MANQUANT]")
 
-    # On fusionne le dictionnaire global des émojis avec tes variables locales
     variables_fusionnees = {**DICT_EMOJIS, **kwargs}
 
     if variables_fusionnees:
-        # On utilise format_map avec notre SafeDict pour une sécurité absolue
         return texte.format_map(SafeDict(**variables_fusionnees))
 
     return texte
 
 
-# ==========================================
-# 🛠️ OUTILS UNIVERSELS & UI (PAGINATION CORRIGÉE)
-# ==========================================
 class PaginationView(discord.ui.View):
     def __init__(self, embeds, timeout=3600):
         super().__init__(timeout=timeout)
@@ -117,7 +142,6 @@ class PaginationView(discord.ui.View):
         self.current_page = 0
         self.message = None
 
-        # Création des boutons dynamiquement pour éviter le crash d'émojis
         self.btn_prev = discord.ui.Button(
             emoji=DICT_EMOJIS.get("e_last", "⏮️"), style=discord.ButtonStyle.secondary, custom_id="page_prev"
         )
@@ -181,7 +205,7 @@ class RefreshOnlyView(discord.ui.View):
         self.add_item(self.refresh_btn)
 
     async def cb_refresh(self, interaction: discord.Interaction):
-        # Sécurisation du message parent
+
         if not self.message:
             self.message = interaction.message
         await self.callback_func(interaction)
@@ -196,9 +220,6 @@ class RefreshOnlyView(discord.ui.View):
                 pass
 
 
-# ==========================================
-# 🎲 MESSAGE SOUTIENS ALEATOIRE
-# ==========================================
 VOTES_FILE = JOUEURS_DIR / "votes.json"
 
 
@@ -206,17 +227,28 @@ async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_per
     """Vérifie si le joueur est protégé par les 7 jours. Sinon, lance le dé."""
     user_id_str = str(interaction.user.id)
 
+    if VOTES_FILE.exists():
+        try:
+            with open(VOTES_FILE, encoding="utf-8") as f:
+                votes_data = json.load(f)
 
+            if user_id_str in votes_data:
+                deadline = datetime.fromisoformat(votes_data[user_id_str])
+                if datetime.now() < deadline:
+                    return
 
         except Exception as e:
             print(f"❌ [DEBUG VOTE] Erreur lors de la lecture du bouclier : {e}")
 
+    if random.randint(1, 100) > probability_percent:
+        return
 
-async def get_server_config (interaction :discord .Interaction ):
-    global USERS_CONFIG_CACHE ,GUILDS_CONFIG_CACHE 
+    vote_url = "https://top.gg/bot/1472309793065533493/vote"
+    review_url = "https://top.gg/bot/1472309793065533493#reviews"
 
-    default_lang ="fr"
-    default_server ="E4K_FR1"
+    btn_vote_lbl = t(langue, "vote_prompt_btn", defaut="Voter (1 clic)")
+    btn_review_lbl = t(langue, "review_prompt_btn", defaut="Laisser un avis")
+    titre_txt = t(langue, "vote_prompt_title", defaut="⭐ Coucou ! Un petit service ?")
 
     desc_txt = t(
         langue,
@@ -226,7 +258,6 @@ async def get_server_config (interaction :discord .Interaction ):
 
     view = discord.ui.View()
 
-    # Utilisation du dictionnaire d'émojis
     btn_vote = discord.ui.Button(label=btn_vote_lbl, url=vote_url, emoji=DICT_EMOJIS.get("e_sparkles", "✨"))
     view.add_item(btn_vote)
 
@@ -241,33 +272,16 @@ async def get_server_config (interaction :discord .Interaction ):
         pass
 
 
-    btn_vote =discord .ui .Button (label =btn_vote_lbl ,url =vote_url ,emoji =DICT_EMOJIS .get ("e_sparkles","✨"))
-    view .add_item (btn_vote )
-
-    btn_review =discord .ui .Button (label =btn_review_lbl ,url =review_url ,emoji =DICT_EMOJIS .get ("e_main","⭐"))
-    view .add_item (btn_review )
-
-    embed =discord .Embed (title =titre_txt ,description =desc_txt ,color =discord .Color .random ())
-
-    try :
-        await interaction .followup .send (embed =embed ,view =view ,ephemeral =True )
-    except Exception :
-        pass 
-
-
-
-
-
-def _get_api_timestamp (*sources ):
+def _get_api_timestamp(*sources):
     """
     Explore de manière récursive et profonde les structures de données renvoyées par l'API.
     Traque TOUTES les dates trouvées pour s'assurer d'extraire la plus récente.
     """
-    dates_trouvees =[]
+    dates_trouvees = []
 
-    def search_ts (obj ):
-        if isinstance (obj ,dict ):
-            for k ,v in obj .items ():
+    def search_ts(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
                 if k in [
                     "updated_at",
                     "updatedAt",
@@ -311,263 +325,260 @@ def format_num(n):
 
         if n >= 1_000_000_000:
             return f"{signe}{n / 1_000_000_000:.1f}B"
-        if n >=1_000_000 :
+        if n >= 1_000_000:
             return f"{signe}{n / 1_000_000:.1f}M"
-        if n >=1_000 :
+        if n >= 1_000:
             return f"{signe}{n / 1_000:.1f}k"
         return f"{signe}{n}"
-    except :
+    except:
         return "0"
 
 
-def get_discord_timestamp (iso_str ,style ="R",langue ="fr"):
-    try :
-        dt =datetime .fromisoformat (str (iso_str ).replace ("Z","+00:00"))
+def get_discord_timestamp(iso_str, style="R", langue="fr"):
+    try:
+        dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
         return f"<t:{int(dt.timestamp())}:{style}>"
-    except :
-        return t (langue ,"utils_unknown_date",defaut ="Date inconnue")
+    except:
+        return t(langue, "utils_unknown_date", defaut="Date inconnue")
 
 
+async def get_cached_data(serveur="E4K_FR1"):
+    global CACHE
 
+    if serveur not in CACHE:
+        CACHE[serveur] = {"players": [], "players_data": {}, "alliances": [], "alliance_members": {}, "last_refresh": 0}
 
-
-async def get_cached_data (serveur ="E4K_FR1"):
-    global CACHE 
-
-    if serveur not in CACHE :
-        CACHE [serveur ]={"players":[],"players_data":{},"alliances":[],"alliance_members":{},"last_refresh":0 }
-
-    def _lecture_lourde ():
-        try :
-            dossier_serveur =BASE_DATA_PATH /"server_scans"/serveur 
-            if not dossier_serveur .exists ():
+    def _lecture_lourde():
+        try:
+            dossier_serveur = BASE_DATA_PATH / "server_scans" / serveur
+            if not dossier_serveur.exists():
                 return {}
 
-            player_files =list (dossier_serveur .rglob ("server_*.json"))
-            if not player_files :
+            player_files = list(dossier_serveur.rglob("server_*.json"))
+            if not player_files:
                 return {}
 
-            latest =max (player_files ,key =lambda p :p .stat ().st_mtime )
-            with open (latest ,encoding ="utf-8")as f :
-                return json .load (f ).get ("players",{})
-        except Exception as e :
-            logger .error (f"❌ [Cache] Erreur lors de la lecture lourde de {serveur} : {e}")
+            latest = max(player_files, key=lambda p: p.stat().st_mtime)
+            with open(latest, encoding="utf-8") as f:
+                return json.load(f).get("players", {})
+        except Exception as e:
+            logger.error(f"❌ [Cache] Erreur lors de la lecture lourde de {serveur} : {e}")
             return {}
 
-    if time .time ()-CACHE [serveur ]["last_refresh"]>300 :
-        players_data =await asyncio .to_thread (_lecture_lourde )
-        CACHE [serveur ]["players_data"]=players_data 
-        CACHE [serveur ]["players"]=list (players_data .keys ())
+    if time.time() - CACHE[serveur]["last_refresh"] > 300:
+        players_data = await asyncio.to_thread(_lecture_lourde)
+        CACHE[serveur]["players_data"] = players_data
+        CACHE[serveur]["players"] = list(players_data.keys())
 
-        alliances_set =set ()
-        alliance_members ={}
-        for p_name ,p_info in players_data .items ():
-            a_name =p_info .get ("alliance")or p_info .get ("alliance_name")
-            if isinstance (a_name ,dict ):
-                a_name =a_name .get ("name")
-            if a_name and a_name not in ["Sans alliance",""]:
-                alliances_set .add (a_name )
-                if a_name not in alliance_members :
-                    alliance_members [a_name ]=[]
-                alliance_members [a_name ].append (p_name )
+        alliances_set = set()
+        alliance_members = {}
+        for p_name, p_info in players_data.items():
+            a_name = p_info.get("alliance") or p_info.get("alliance_name")
+            if isinstance(a_name, dict):
+                a_name = a_name.get("name")
+            if a_name and a_name not in ["Sans alliance", ""]:
+                alliances_set.add(a_name)
+                if a_name not in alliance_members:
+                    alliance_members[a_name] = []
+                alliance_members[a_name].append(p_name)
 
-        CACHE [serveur ]["alliances"]=list (alliances_set )
-        CACHE [serveur ]["alliance_members"]=alliance_members 
-        CACHE [serveur ]["last_refresh"]=time .time ()
+        CACHE[serveur]["alliances"] = list(alliances_set)
+        CACHE[serveur]["alliance_members"] = alliance_members
+        CACHE[serveur]["last_refresh"] = time.time()
 
-    return CACHE [serveur ]
+    return CACHE[serveur]
 
 
-async def joueur_autocomplete (interaction :discord .Interaction ,current :str ):
-    _ ,serveur =await get_server_config (interaction )
-    data =await get_cached_data (serveur )
+async def joueur_autocomplete(interaction: discord.Interaction, current: str):
+    _, serveur = await get_server_config(interaction)
+    data = await get_cached_data(serveur)
     return [
-    app_commands .Choice (name =str (n )[:100 ],value =str (n )[:100 ])
-    for n in data .get ("players",[])
-    if current .lower ()in str (n ).lower ()and str (n ).strip ()
-    ][:25 ]
+        app_commands.Choice(name=str(n)[:100], value=str(n)[:100])
+        for n in data.get("players", [])
+        if current.lower() in str(n).lower() and str(n).strip()
+    ][:25]
 
 
-async def alliance_autocomplete (interaction :discord .Interaction ,current :str ):
-    _ ,serveur =await get_server_config (interaction )
-    data =await get_cached_data (serveur )
+async def alliance_autocomplete(interaction: discord.Interaction, current: str):
+    _, serveur = await get_server_config(interaction)
+    data = await get_cached_data(serveur)
     return [
-    app_commands .Choice (name =str (n )[:100 ],value =str (n )[:100 ])
-    for n in data .get ("alliances",[])
-    if current .lower ()in str (n ).lower ()and str (n ).strip ()
-    ][:25 ]
+        app_commands.Choice(name=str(n)[:100], value=str(n)[:100])
+        for n in data.get("alliances", [])
+        if current.lower() in str(n).lower() and str(n).strip()
+    ][:25]
 
 
-async def event_autocomplete (interaction :discord .Interaction ,current :str ):
-    events_en =[
-    "Nomad Invasion",
-    "Samurai Invasion",
-    "Bloodcrow Invasion",
-    "War of the Realms",
-    "Storm Islands",
-    "Battle of Berimond",
+async def event_autocomplete(interaction: discord.Interaction, current: str):
+    events_en = [
+        "Nomad Invasion",
+        "Samurai Invasion",
+        "Bloodcrow Invasion",
+        "War of the Realms",
+        "Storm Islands",
+        "Battle of Berimond",
     ]
-    return [app_commands .Choice (name =e ,value =e )for e in events_en if current .lower ()in e .lower ()][:25 ]
+    return [app_commands.Choice(name=e, value=e) for e in events_en if current.lower() in e.lower()][:25]
 
 
-async def event_alliance_autocomplete (interaction :discord .Interaction ,current :str ):
-    events_en =["Nomad Invasion","Samurai Invasion","Bloodcrow Invasion","War of the Realms","Battle of Berimond"]
-    return [app_commands .Choice (name =e ,value =e )for e in events_en if current .lower ()in e .lower ()][:25 ]
+async def event_alliance_autocomplete(interaction: discord.Interaction, current: str):
+    events_en = ["Nomad Invasion", "Samurai Invasion", "Bloodcrow Invasion", "War of the Realms", "Battle of Berimond"]
+    return [app_commands.Choice(name=e, value=e) for e in events_en if current.lower() in e.lower()][:25]
 
 
-async def generer_rapport_alliance_embed (
-bot ,
-event_name ,
-event_keys ,
-alliance_name ,
-clr_alliance =0x3498DB ,
-interaction :discord .Interaction =None ,
-custom_server :str =None ,
+async def generer_rapport_alliance_embed(
+    bot,
+    event_name,
+    event_keys,
+    alliance_name,
+    clr_alliance=0x3498DB,
+    interaction: discord.Interaction = None,
+    custom_server: str = None,
 ):
-    headers =await get_api_headers (interaction =interaction ,custom_server =custom_server )
-    safe_alliance =urllib .parse .quote (alliance_name )
+    headers = await get_api_headers(interaction=interaction, custom_server=custom_server)
+    safe_alliance = urllib.parse.quote(alliance_name)
 
-    langue ="fr"
-    serveur_cible =custom_server or "E4K_FR1"
+    langue = "fr"
+    serveur_cible = custom_server or "E4K_FR1"
 
-    if interaction :
-        langue ,srv =await get_server_config (interaction )
-        if not custom_server :
-            serveur_cible =srv 
+    if interaction:
+        langue, srv = await get_server_config(interaction)
+        if not custom_server:
+            serveur_cible = srv
 
-    search_url =f"https://api.gge-tracker.com/api/v1/alliances/name/{safe_alliance}"
+    search_url = f"https://api.gge-tracker.com/api/v1/alliances/name/{safe_alliance}"
 
-    try :
-        async with bot .session .get (search_url ,headers =headers ,timeout =10 )as resp :
-            if resp .status !=200 :
-                return None ,t (langue ,"utils_err_alliance_id",defaut ="ID Alliance introuvable."),None ,None 
-            data1 =await resp .json ()
-            target =data1 [0 ]if isinstance (data1 ,list )and data1 else data1 
-            alliance_id =target .get ("alliance_id")or target .get ("id")
-    except Exception :
-        return None ,t (langue ,"utils_err_api_connection",defaut ="Erreur de connexion avec GGE-Tracker."),None ,None 
+    try:
+        async with bot.session.get(search_url, headers=headers, timeout=10) as resp:
+            if resp.status != 200:
+                return None, t(langue, "utils_err_alliance_id", defaut="ID Alliance introuvable."), None, None
+            data1 = await resp.json()
+            target = data1[0] if isinstance(data1, list) and data1 else data1
+            alliance_id = target.get("alliance_id") or target.get("id")
+    except Exception:
+        return None, t(langue, "utils_err_api_connection", defaut="Erreur de connexion avec GGE-Tracker."), None, None
 
-    if not alliance_id :
-        return None ,t (langue ,"utils_err_alliance_not_found",defaut ="Alliance introuvable."),None ,None 
+    if not alliance_id:
+        return None, t(langue, "utils_err_alliance_not_found", defaut="Alliance introuvable."), None, None
 
-    stats_url =f"https://api.gge-tracker.com/api/v1/statistics/alliance/{alliance_id}"
-    try :
-        async with bot .session .get (stats_url ,headers =headers ,timeout =15 )as resp :
-            if resp .status !=200 :
+    stats_url = f"https://api.gge-tracker.com/api/v1/statistics/alliance/{alliance_id}"
+    try:
+        async with bot.session.get(stats_url, headers=headers, timeout=15) as resp:
+            if resp.status != 200:
                 return (
-                None ,
-                t (langue ,"utils_err_stats_download",defaut ="Échec du téléchargement des stats."),
-                None ,
-                None ,
+                    None,
+                    t(langue, "utils_err_stats_download", defaut="Échec du téléchargement des stats."),
+                    None,
+                    None,
                 )
-            stats_data =await resp .json ()
-    except Exception :
+            stats_data = await resp.json()
+    except Exception:
         return (
-        None ,
-        t (langue ,"utils_err_history_download",defaut ="Erreur lors du téléchargement de l'historique."),
-        None ,
-        None ,
+            None,
+            t(langue, "utils_err_history_download", defaut="Erreur lors du téléchargement de l'historique."),
+            None,
+            None,
         )
 
-    best_history =[]
-    global_latest_str =""
+    best_history = []
+    global_latest_str = ""
 
-    for key in event_keys :
-        curr_history =stats_data .get ("points",{}).get (key ,[])
-        if curr_history :
-            dates =[entry .get ("date","")for entry in curr_history if entry .get ("date")]
-            if dates :
-                curr_max =max (dates )
-                if curr_max >global_latest_str :
-                    global_latest_str =curr_max 
-                    best_history =curr_history 
+    for key in event_keys:
+        curr_history = stats_data.get("points", {}).get(key, [])
+        if curr_history:
+            dates = [entry.get("date", "") for entry in curr_history if entry.get("date")]
+            if dates:
+                curr_max = max(dates)
+                if curr_max > global_latest_str:
+                    global_latest_str = curr_max
+                    best_history = curr_history
 
-    if not best_history :
-        msg =t (
-        langue ,
-        "utils_err_no_points",
-        alliance =alliance_name ,
-        nom_event =event_name ,
-        defaut =f"Aucun point enregistré pour **{alliance_name}** sur **{event_name}**.",
+    if not best_history:
+        msg = t(
+            langue,
+            "utils_err_no_points",
+            alliance=alliance_name,
+            nom_event=event_name,
+            defaut=f"Aucun point enregistré pour **{alliance_name}** sur **{event_name}**.",
         )
-        return None ,msg ,None ,None 
+        return None, msg, None, None
 
-    player_dict ={}
-    alliance_members =set ()
+    player_dict = {}
+    alliance_members = set()
 
-    cache =await get_cached_data (serveur_cible )
-    local_data =cache .get ("players_data",{})
+    cache = await get_cached_data(serveur_cible)
+    local_data = cache.get("players_data", {})
 
-    api_pids =set (str (entry .get ("player_id"))for entry in best_history )
+    api_pids = set(str(entry.get("player_id")) for entry in best_history)
 
-    for p_name ,p_info in local_data .items ():
-        local_pid =str (p_info .get ("player_id",p_info .get ("id","")))
+    for p_name, p_info in local_data.items():
+        local_pid = str(p_info.get("player_id", p_info.get("id", "")))
 
-        matched_pid =local_pid 
-        for api_pid in api_pids :
-            if api_pid ==local_pid or api_pid .startswith (local_pid )or local_pid .startswith (api_pid ):
-                matched_pid =api_pid 
-                break 
+        matched_pid = local_pid
+        for api_pid in api_pids:
+            if api_pid == local_pid or api_pid.startswith(local_pid) or local_pid.startswith(api_pid):
+                matched_pid = api_pid
+                break
 
-        player_dict [matched_pid ]=p_name 
+        player_dict[matched_pid] = p_name
 
-        p_all_id =str (p_info .get ("allianceId",p_info .get ("alliance_id","")))
-        is_in_alliance =False 
+        p_all_id = str(p_info.get("allianceId", p_info.get("alliance_id", "")))
+        is_in_alliance = False
 
-        if p_all_id and (str (alliance_id ).startswith (p_all_id )or p_all_id .startswith (str (alliance_id ))):
-            is_in_alliance =True 
-        elif str (p_info .get ("allianceName","")).lower ()==alliance_name .lower ():
-            is_in_alliance =True 
+        if p_all_id and (str(alliance_id).startswith(p_all_id) or p_all_id.startswith(str(alliance_id))):
+            is_in_alliance = True
+        elif str(p_info.get("allianceName", "")).lower() == alliance_name.lower():
+            is_in_alliance = True
 
-        if is_in_alliance :
-            alliance_members .add (matched_pid )
+        if is_in_alliance:
+            alliance_members.add(matched_pid)
 
-    cutoff_str =""
-    if best_history :
-        dates_uniques =set (entry .get ("date","")for entry in best_history if entry .get ("date"))
-        if dates_uniques :
-            dts_tries =sorted ([datetime .fromisoformat (d .replace ("Z","+00:00"))for d in dates_uniques ])
-            debut_cluster_actuel =dts_tries [-1 ]
-            for i in range (len (dts_tries )-2 ,-1 ,-1 ):
-                if ((dts_tries [i +1 ]-dts_tries [i ]).total_seconds ()/86400.0 )>2.0 :
-                    debut_cluster_actuel =dts_tries [i +1 ]
-                    break 
-                debut_cluster_actuel =dts_tries [i ]
-            cutoff_str =(debut_cluster_actuel -timedelta (hours =1 )).isoformat ().replace ("+00:00","Z")
+    cutoff_str = ""
+    if best_history:
+        dates_uniques = set(entry.get("date", "") for entry in best_history if entry.get("date"))
+        if dates_uniques:
+            dts_tries = sorted([datetime.fromisoformat(d.replace("Z", "+00:00")) for d in dates_uniques])
+            debut_cluster_actuel = dts_tries[-1]
+            for i in range(len(dts_tries) - 2, -1, -1):
+                if ((dts_tries[i + 1] - dts_tries[i]).total_seconds() / 86400.0) > 2.0:
+                    debut_cluster_actuel = dts_tries[i + 1]
+                    break
+                debut_cluster_actuel = dts_tries[i]
+            cutoff_str = (debut_cluster_actuel - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
 
-    latest_points ={}
-    for entry in best_history :
-        pid =str (entry .get ("player_id"))
-        pt =int (entry .get ("point",0 ))
-        d_str =entry .get ("date","")
-        if cutoff_str and d_str <cutoff_str :
-            continue 
-        if pid not in latest_points or d_str >latest_points [pid ]["date"]:
-            latest_points [pid ]={"date":d_str ,"point":pt }
+    latest_points = {}
+    for entry in best_history:
+        pid = str(entry.get("player_id"))
+        pt = int(entry.get("point", 0))
+        d_str = entry.get("date", "")
+        if cutoff_str and d_str < cutoff_str:
+            continue
+        if pid not in latest_points or d_str > latest_points[pid]["date"]:
+            latest_points[pid] = {"date": d_str, "point": pt}
 
-    active_players =[]
-    zero_players =[]
-    all_pids_to_check =set (alliance_members ).union (set (latest_points .keys ()))
+    active_players = []
+    zero_players = []
+    all_pids_to_check = set(alliance_members).union(set(latest_points.keys()))
 
-    for pid in all_pids_to_check :
-        pt =latest_points .get (pid ,{}).get ("point",0 )
-        default_unknown =f"ID Inconnu ({pid[:4]}...)"
-        p_name =player_dict .get (pid ,t (langue ,"utils_unknown_id",pid_short =pid [:4 ],defaut =default_unknown ))
+    for pid in all_pids_to_check:
+        pt = latest_points.get(pid, {}).get("point", 0)
+        default_unknown = f"ID Inconnu ({pid[:4]}...)"
+        p_name = player_dict.get(pid, t(langue, "utils_unknown_id", pid_short=pid[:4], defaut=default_unknown))
 
-        if pt >0 :
-            active_players .append ((p_name ,pt ))
-        elif pid in alliance_members :
-            zero_players .append (p_name )
+        if pt > 0:
+            active_players.append((p_name, pt))
+        elif pid in alliance_members:
+            zero_players.append(p_name)
 
-    active_players .sort (key =lambda x :x [1 ],reverse =True )
+    active_players.sort(key=lambda x: x[1], reverse=True)
 
-    if not active_players and not zero_players :
-        return None ,t (langue ,"utils_err_event_not_started",defaut ="Événement non démarré ou vide."),None ,None 
+    if not active_players and not zero_players:
+        return None, t(langue, "utils_err_event_not_started", defaut="Événement non démarré ou vide."), None, None
 
-    total_score =sum (x [1 ]for x in active_players )
-    total_current_members =len (alliance_members )
-    active_current_count =sum (1 for pid in alliance_members if latest_points .get (pid ,{}).get ("point",0 )>0 )
-    taux_participation =(active_current_count /total_current_members )*100 if total_current_members >0 else 0.0 
+    total_score = sum(x[1] for x in active_players)
+    total_current_members = len(alliance_members)
+    active_current_count = sum(1 for pid in alliance_members if latest_points.get(pid, {}).get("point", 0) > 0)
+    taux_participation = (active_current_count / total_current_members) * 100 if total_current_members > 0 else 0.0
 
     lignes_classement = []
     for j, (name, score) in enumerate(active_players):
@@ -576,14 +587,14 @@ custom_server :str =None ,
     for name in zero_players:
         lignes_classement.append(f"{DICT_EMOJIS.get('e_movements', '🚶‍♂️')} **{name}** ➔ **0 pts**")
 
-    stats_text =t (
-    langue ,
-    "utils_embed_stats_text",
-    total_score =format_num (total_score ),
-    taux_participation =f"{taux_participation:.1f}",
-    active =active_current_count ,
-    total =total_current_members ,
-    defaut =f"**Points Totaux** : **{format_num(total_score)}**\n**Participation** : {taux_participation:.1f}% ({active_current_count}/{total_current_members} membres)",
+    stats_text = t(
+        langue,
+        "utils_embed_stats_text",
+        total_score=format_num(total_score),
+        taux_participation=f"{taux_participation:.1f}",
+        active=active_current_count,
+        total=total_current_members,
+        defaut=f"**Points Totaux** : **{format_num(total_score)}**\n**Participation** : {taux_participation:.1f}% ({active_current_count}/{total_current_members} membres)",
     )
 
     embed = discord.Embed(
@@ -620,25 +631,22 @@ custom_server :str =None ,
             part_num=part_num,
             defaut=f"{{e_ranking}} Classement (Partie {part_num})",
         )
-        embed .add_field (name =part_title ,value =chunk_txt ,inline =False )
+        embed.add_field(name=part_title, value=chunk_txt, inline=False)
 
-    if global_latest_str :
-        ts_r =get_discord_timestamp (global_latest_str ,"R",langue )
-        ts_t =get_discord_timestamp (global_latest_str ,"t",langue )
+    if global_latest_str:
+        ts_r = get_discord_timestamp(global_latest_str, "R", langue)
+        ts_t = get_discord_timestamp(global_latest_str, "t", langue)
 
-        update_title =t (langue ,"utils_embed_update_title",defaut ="⏱️ Actualisation")
-        update_text =t (
-        langue ,"utils_embed_update_text",ts_r =ts_r ,ts_t =ts_t ,defaut =f"Dernier relevé effectué {ts_r} (*{ts_t}*)"
+        update_title = t(langue, "utils_embed_update_title", defaut="⏱️ Actualisation")
+        update_text = t(
+            langue, "utils_embed_update_text", ts_r=ts_r, ts_t=ts_t, defaut=f"Dernier relevé effectué {ts_r} (*{ts_t}*)"
         )
 
-        embed .add_field (name =update_title ,value =update_text ,inline =False )
+        embed.add_field(name=update_title, value=update_text, inline=False)
 
     return embed, lignes_classement, stats_text, global_latest_str
 
 
-# =========================================
-# ⚙️ VARIABLES GLOBALES & CACHE
-# =========================================
 MON_ID_DISCORD = int(os.getenv("MON_ID_DISCORD", 0))
 TOKEN = os.getenv("DISCORD_TOKEN")
 TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
@@ -660,9 +668,7 @@ TRACKER_EVENTS = {
     "Battle of Berimond": ["player_event_berimond_invasion_history", "player_event_berimond_kingdom_history"],
 }
 
-# ==========================================
-# 🔐 MOTEUR DE VERROUILLAGE ASYNCHRONE
-# ==========================================
+
 FILE_LOCKS = {}
 
 
@@ -673,9 +679,6 @@ def get_file_lock(filepath):
     return FILE_LOCKS[path_key]
 
 
-# ==========================================
-# 🔧 Footer global
-# ==========================================
 BOT_VERSION = "GGE Assistant • Version 1.2.5"
 
 
@@ -691,9 +694,6 @@ async def setup_embed_footer(
     embed.set_footer(text=txt)
 
 
-# ==========================================
-# 🔧 MAINTENANCE & CACHES JSON
-# ==========================================
 def load_maintenance():
     path = ADMINS_DIR / "maintenance.json"
     if os.path.exists(path):

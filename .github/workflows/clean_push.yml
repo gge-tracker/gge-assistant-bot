@@ -13,30 +13,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: dev
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Run comment stripper
-        run: python strip_comments.py
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run comment stripper and formatter
+        run: python .github/scripts/strip_comments.py
 
       - name: Push clean code to main
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          mv production /tmp/production_temp
+          # 1. On prépare un dossier complet avec TOUT ton projet (sauf .git et production)
+          rsync -a --exclude='.git' --exclude='production' ./ /tmp/project_temp/
           
+          # 2. On écrase les fichiers .py de ce dossier avec tes versions "propres" générées
+          cp -r production/* /tmp/project_temp/
+          
+          # 3. On passe sur la branche main
           git checkout main
           
-          cp -r /tmp/production_temp/* ./
+          # 4. On synchronise EXACTEMENT main avec notre dossier préparé (--delete supprime les vieux fichiers)
+          rsync -a --delete --exclude='.git' /tmp/project_temp/ ./
           
+          # 5. On pousse le tout proprement
           git add .
           git commit -m "${{ github.event.head_commit.message }}" || echo "Rien à commit"
           git push origin main

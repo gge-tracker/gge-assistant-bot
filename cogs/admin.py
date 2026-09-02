@@ -35,15 +35,11 @@ class AdminCog(commands.Cog):
         self.bot = bot
         self.admin_lang = "fr"
 
-    # 🟢 FILTRE GLOBAL ADMIN : Seul le créateur peut utiliser ce module
     def cog_check(self, ctx):
         if ctx.author.id != MON_ID_DISCORD:
             return False
         return True
 
-    # ==========================================
-    # 🆘 MENU D'AIDE ADMINISTRATEUR
-    # ==========================================
     @commands.command(name="ahelp", aliases=["admin_help", "adminhelp"], hidden=True)
     async def admin_help(self, ctx):
         """[CACHÉE] !ahelp : Affiche le récapitulatif des commandes admin."""
@@ -54,7 +50,6 @@ class AdminCog(commands.Cog):
             color=discord.Color.dark_red(),
         )
 
-        # Catégorie 1 : Système & Core
         embed.add_field(
             name="⚙️ Système & Core",
             value="`!sync` ➔ Synchronise les commandes Slash.\n"
@@ -67,7 +62,6 @@ class AdminCog(commands.Cog):
             inline=False,
         )
 
-        # Catégorie 2 : Serveurs & API
         embed.add_field(
             name="🌍 Serveurs Discord & GGE",
             value="`!bot_servers` ➔ Liste les serveurs Discord utilisant le bot.\n"
@@ -77,7 +71,6 @@ class AdminCog(commands.Cog):
             inline=False,
         )
 
-        # Catégorie 3 : Calendrier
         embed.add_field(
             name="📅 Gestion du Calendrier",
             value="`!cal_keys` ➔ Liste les clés d'événements valides.\n"
@@ -89,7 +82,6 @@ class AdminCog(commands.Cog):
             inline=False,
         )
 
-        # Catégorie 4 : Sécurité
         embed.add_field(
             name="⛔ Videur & Modération",
             value="`!ban_cmd [cmd] [raison]` ➔ Désactive une commande.\n"
@@ -99,7 +91,6 @@ class AdminCog(commands.Cog):
             inline=False,
         )
 
-        # Catégorie 5 : Traductions
         embed.add_field(
             name="🌐 Traductions (i18n)",
             value="`!i18n_sync` ➔ Scanne le code et met à jour les `.json`.\n"
@@ -107,7 +98,6 @@ class AdminCog(commands.Cog):
             inline=False,
         )
 
-        # Catégorie 6 : Code & Emojis
         embed.add_field(
             name="🛠️ Code & Emojis",
             value="`!emojis_list` ➔ Liste tous les émojis utilisés.\n"
@@ -117,7 +107,6 @@ class AdminCog(commands.Cog):
             inline=False,
         )
 
-        # Catégorie 7 : Vigilance
         embed.add_field(
             name="🕵️ Système de Vigilance",
             value="`!vigi_add [pseudo_ou_id]` ➔ Place un joueur sous écoute.\n"
@@ -129,9 +118,6 @@ class AdminCog(commands.Cog):
         embed.set_footer(text="Ces commandes sont invisibles pour les utilisateurs normaux.")
         await ctx.send(embed=embed)
 
-    # ==========================================
-    # ⚙️ 1. SYSTÈME & CORE
-    # ==========================================
     @commands.command(name="sync", hidden=True)
     async def sync_tree(self, ctx):
         """[CACHÉE] !sync : Synchronise l'arbre des commandes Slash."""
@@ -288,9 +274,6 @@ class AdminCog(commands.Cog):
                 "🔒 **Passe-partout DÉSACTIVÉ.** Tu es maintenant un simple mortel ! Tes commandes Slash subiront les mêmes contrôles que les autres joueurs.\n*(Tape `!bypass` pour annuler).*"
             )
 
-    # ==========================================
-    # 🌍 2. SERVEURS DISCORD & GGE
-    # ==========================================
     @commands.command(name="bot_servers", hidden=True)
     async def admin_serveurs(self, ctx):
         """[CACHÉE] !bot_servers : Liste les serveurs Discord sur lesquels le bot est présent."""
@@ -372,7 +355,7 @@ class AdminCog(commands.Cog):
             async with self.bot.session.get(url, timeout=10) as r:
                 if r.status != 200:
                     await msg_wait.edit(content=f"❌ Erreur {r.status} lors de l'accès au XML de GGE-Tracker.")
-                    return  # Sécurité : on return direct pour ne pas planter la suite
+                    return
 
                 xml_text = await r.text()
                 root = ET.fromstring(xml_text)
@@ -490,9 +473,6 @@ class AdminCog(commands.Cog):
                 logger.error(f"❌ Erreur critique scan manuel ({cible}) : {e}")
                 await ctx.send(f"⚠️ **Erreur lors de l'exécution ({cible}) :**\n```py\n{e}\n```")
 
-    # ==========================================
-    # 📅 3. GESTIONNAIRE DU CALENDRIER (ADMIN)
-    # ==========================================
     async def _reload_calendar_cache(self, ctx):
         """Fonction interne pour forcer la mise à jour du CalendrierCog en mémoire"""
         cog = self.bot.get_cog("CalendrierCog")
@@ -694,9 +674,6 @@ class AdminCog(commands.Cog):
         await ctx.send(f"⚙️ Mapping de `{event_key}` mis à jour : **{cible.lower()}** ➔ `{heure}`.")
         await self._reload_calendar_cache(ctx)
 
-    # ==========================================
-    # ⛔ 4. VIDEUR & MODÉRATION
-    # ==========================================
     @commands.command(name="ban_cmd", hidden=True)
     async def ban_cmd(self, ctx, command: str, *, reason: str = "Maintenance."):
         """[CACHÉE] !ban_cmd [command] [reason] : Bloque une commande globalement."""
@@ -747,7 +724,6 @@ class AdminCog(commands.Cog):
     async def _purge_user_data(self, uid: str):
         """Parcourt les fichiers de configuration (hors serveurs) pour supprimer les données de l'utilisateur."""
 
-        # Liste allégée : uniquement le cœur, le joueur et l'admin
         fichiers_a_scanner = [
             CONFIG_DIR / "users.json",
             CONFIG_DIR / "target.json",
@@ -763,16 +739,13 @@ class AdminCog(commands.Cog):
             modifie = False
 
             if isinstance(obj, dict):
-                # 1. Si l'ID du banni est directement une clé principale
                 if uid in obj:
                     del obj[uid]
                     modifie = True
 
-                # 2. Scanner les sous-dossiers
                 cles_a_supprimer = []
                 for k, v in obj.items():
                     if isinstance(v, dict):
-                        # Si le dictionnaire appartient à l'utilisateur
                         if (
                             str(v.get("author_id")) == uid
                             or str(v.get("user_id")) == uid
@@ -792,7 +765,7 @@ class AdminCog(commands.Cog):
 
             elif isinstance(obj, list):
                 longueur_initiale = len(obj)
-                # 3. Filtrer les listes : on détruit les éléments qui ont le banni pour auteur
+
                 obj[:] = [
                     item
                     for item in obj
@@ -808,7 +781,6 @@ class AdminCog(commands.Cog):
                 if len(obj) < longueur_initiale:
                     modifie = True
 
-                # On continue l'exploration sur ce qui reste
                 for item in obj:
                     if purger_donnees(item):
                         modifie = True
@@ -845,7 +817,6 @@ class AdminCog(commands.Cog):
         data = await load_blocks_async()
         uid = str(user.id)
 
-        # Formatage majuscule tolérant
         cmd_clean = command.replace("/", "").strip()
         if cmd_clean.upper() == "ALL":
             cmd_clean = "ALL"
@@ -858,7 +829,6 @@ class AdminCog(commands.Cog):
         data["blocked_users"][uid][cmd_clean] = reason
         await save_blocks_async(data)
 
-        # 🔥 Lancement du "Droit à l'oubli" si bannissement total
         purge_msg = ""
         if cmd_clean == "ALL":
             fichiers_modifies = await self._purge_user_data(uid)
@@ -912,9 +882,6 @@ class AdminCog(commands.Cog):
             )
             await ctx.send(msg)
 
-    # ==========================================
-    # 🌐 5. TRADUCTIONS (i18n)
-    # ==========================================
     class I18nConfirmView(discord.ui.View):
         def __init__(self, ctx):
             super().__init__(timeout=120)
@@ -1127,9 +1094,6 @@ class AdminCog(commands.Cog):
         )
         await ctx.send(embed=embed, file=discord_file)
 
-    # ==========================================
-    # 🛠️ 6. CODE & EMOJIS
-    # ==========================================
     @commands.command(name="emojis_list", hidden=True)
     async def emojis_list(self, ctx):
         """[CACHÉE] !emojis_list : Scan le code pour trouver tous les émojis utilisés."""
@@ -1348,10 +1312,6 @@ class AdminCog(commands.Cog):
         await msg_wait.delete()
         await ctx.send(embed=embed)
 
-    # ==========================================
-    # 🕵️ 7. SYSTÈME DE VIGILANCE (ANTI-CONTOURNEMENT)
-    # ==========================================
-
     @commands.command(name="vigi_add", hidden=True)
     async def vigi_add(self, ctx, *, cible: str):
         """[CACHÉE] Ajoute un pseudo ou ID à surveiller."""
@@ -1419,7 +1379,6 @@ class AdminCog(commands.Cog):
         )
         await ctx.send(embed=embed)
 
-    # --- LE MOTEUR D'INTERCEPTION INVISIBLE ---
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
         """Écoute silencieusement TOUTES les commandes slash pour détecter les cibles."""
@@ -1434,7 +1393,6 @@ class AdminCog(commands.Cog):
         if not webhook_url or not webhook_url.startswith("http"):
             return
 
-        # 2. On charge la liste des cibles
         vigi_file = ADMINS_DIR / "vigilance.json"
         if not vigi_file.exists():
             return
@@ -1448,7 +1406,6 @@ class AdminCog(commands.Cog):
         if not cibles:
             return
 
-        # Fonction récursive pour fouiller TOUTES les options tapées par l'utilisateur
         def extract_values(options):
             vals = []
             for opt in options:
@@ -1460,7 +1417,6 @@ class AdminCog(commands.Cog):
 
         inputs = extract_values(interaction.data.get("options", []))
 
-        # Vérification si un des mots surveillés est dans ce que l'utilisateur a tapé
         match_trouve = None
         for val in inputs:
             for cible in cibles:
@@ -1471,7 +1427,6 @@ class AdminCog(commands.Cog):
                 break
 
         if match_trouve:
-            # On lance l'alerte en arrière-plan
             self.bot.loop.create_task(self._send_vigilance_alert(interaction, match_trouve, webhook_url))
 
     async def _send_vigilance_alert(self, interaction: discord.Interaction, match_trouve: str, webhook_url: str):

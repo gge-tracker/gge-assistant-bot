@@ -1,4 +1,5 @@
 import io
+import subprocess
 import tokenize
 from pathlib import Path
 
@@ -20,21 +21,23 @@ def remove_comments(file_path):
 
 
 def build():
-    # .rglob("*.py") cherche dans TOUS les sous-dossiers
     for py_file in Path(".").rglob("*.py"):
-        # On ignore le dossier de destination et le script lui-même
         if "production" in py_file.parts or py_file.name == "strip_comments.py" or ".github" in py_file.parts:
             continue
 
         clean_code = remove_comments(py_file)
 
-        # Recrée les sous-dossiers exacts (ex: production/cogs/, production/data/, etc.)
         target_file = TARGET_DIR / py_file
         target_file.parent.mkdir(parents=True, exist_ok=True)
 
         with open(target_file, "w", encoding="utf-8") as f:
             f.write(clean_code)
         print(f"✅ Nettoyé : {py_file}")
+
+    # 🛠️ Application automatique de Ruff sur le code de production
+    print("🧹 Formatage et tri des imports avec Ruff sur le dossier production...")
+    subprocess.run(["ruff", "format", "production"], check=False)
+    subprocess.run(["ruff", "check", "--fix", "production"], check=False)
 
 
 if __name__ == "__main__":

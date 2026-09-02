@@ -10,9 +10,6 @@ from discord.ext import commands
 from utils import CONFIG_DIR, clear_config_cache, get_server_config, load_configuration_async, t
 
 
-# ==========================================
-# 💾 SAUVEGARDE CONFIG UTILISATEURS (DMs)
-# ==========================================
 async def load_users_config():
     path = CONFIG_DIR / "users.json"
     if os.path.exists(path):
@@ -34,14 +31,9 @@ class ConfigCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ==========================================
-    # 🔍 AUTOCOMPLÉTION DES SERVEURS GGE
-    # ==========================================
     async def server_autocomplete(self, interaction: discord.Interaction, current: str):
         langue, _ = await get_server_config(interaction)
 
-        # 💡 ATTENTION : L'autocomplétion Discord ne supporte PAS les émojis customisés (<:nom:id>).
-        # On doit impérativement utiliser des émojis Unicode standards ici.
         lbl_featured = t(langue, "config_featured", defaut="🌟 Fonctions Avancées")
         lbl_ok = t(langue, "config_supported", defaut="🟢 Standard")
         lbl_ko = t(langue, "config_unsupported", defaut="🔴 Non pris en charge")
@@ -50,12 +42,10 @@ class ConfigCog(commands.Cog):
         lbl_mobile = t(langue, "platform_mobile", defaut="Mobile")
         lbl_pc = t(langue, "platform_pc", defaut="Computer")
 
-        # On crée 3 listes pour que l'autocomplétion trie les meilleurs serveurs en premier
         choix_or = []
         choix_vert = []
         choix_rouge = []
 
-        # 🔄 Lecture depuis la nouvelle structure unifiée
         config_data = await load_configuration_async()
         servers_info = config_data.get("servers_info", {})
 
@@ -77,7 +67,6 @@ class ConfigCog(commands.Cog):
                     full_name = f"{display_name} ({lbl_ko})"[:100]
                     choix_rouge.append(app_commands.Choice(name=full_name, value=srv))
 
-        # Les serveurs 🌟 apparaissent d'abord, puis les 🟢, puis les 🔴
         choix = (choix_or + choix_vert + choix_rouge)[:25]
 
         if not choix and current:
@@ -87,9 +76,6 @@ class ConfigCog(commands.Cog):
 
         return choix
 
-    # ==========================================
-    # ⚙️ MOTEUR DE SCAN D'URGENCE GLOBAL
-    # ==========================================
     def trigger_emergency_scan(self, serveur_upper: str) -> bool:
         """Déclenche un scan asynchrone si le dossier du serveur n'existe pas encore. Retourne True si déclenché."""
         dossier_serveur = Path(f"/app/data/server_scans/{serveur_upper}")
@@ -113,9 +99,6 @@ class ConfigCog(commands.Cog):
         self.bot.loop.create_task(scan_urgence_background(serveur_upper))
         return True
 
-    # ==========================================
-    # 👤 CONFIGURATION PERSONNELLE UNIQUE
-    # ==========================================
     @app_commands.command(name="setup", description="Configure your language and your primary GGE server.")
     @app_commands.describe(language="Your primary language", server="Your Goodgame Empire server")
     @app_commands.choices(
@@ -132,7 +115,6 @@ class ConfigCog(commands.Cog):
 
         serveur_upper = server.upper()
 
-        # 🔄 Lecture depuis la nouvelle structure unifiée
         config_data = await load_configuration_async()
         servers_info = config_data.get("servers_info", {})
         srv_data = servers_info.get(serveur_upper, {})
@@ -149,7 +131,6 @@ class ConfigCog(commands.Cog):
             )
             return await interaction.followup.send(msg_erreur)
 
-        # 👤 Sauvegarde Personnelle
         user_id = str(interaction.user.id)
         data = await load_users_config()
         data[user_id] = {"nom_discord": interaction.user.name, "langue": language.value, "gge_server": serveur_upper}

@@ -1,32 +1,32 @@
-import asyncio 
-import json 
-import logging 
-import traceback 
-from datetime import datetime ,timedelta 
-from urllib .parse import quote 
+import asyncio
+import json
+import logging
+import traceback
+from datetime import datetime, timedelta
+from urllib.parse import quote
 
-import discord 
-from discord import app_commands 
-from discord .ext import commands 
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 from utils import (
-BASE_DATA_PATH ,
-DICT_EMOJIS ,
-PaginationView ,
-_get_api_timestamp ,
-alliance_autocomplete ,
-format_num ,
-get_api_headers ,
-get_cached_data ,
-get_discord_timestamp ,
-get_server_config ,
-joueur_autocomplete ,
-prompt_vote_if_lucky ,
-setup_embed_footer ,
-t ,
+    BASE_DATA_PATH,
+    DICT_EMOJIS,
+    PaginationView,
+    _get_api_timestamp,
+    alliance_autocomplete,
+    format_num,
+    get_api_headers,
+    get_cached_data,
+    get_discord_timestamp,
+    get_server_config,
+    joueur_autocomplete,
+    prompt_vote_if_lucky,
+    setup_embed_footer,
+    t,
 )
 
-logger =logging .getLogger ("GGE_Bot")
+logger = logging.getLogger("GGE_Bot")
 
 
 class HistoriqueView(discord.ui.View):
@@ -44,46 +44,36 @@ class HistoriqueView(discord.ui.View):
         self.btn_alliance.emoji = DICT_EMOJIS.get("e_alliance_icon", "🛡️")
 
         self.btn_position.label = t(langue, "prof_hist_btn_mouvements", defaut="Mouvements")
-        # Fallback sur e_compass s'il te manque e_moove dans ton DICT_EMOJIS
+
         self.btn_position.emoji = DICT_EMOJIS.get("e_moove", DICT_EMOJIS.get("e_compass", "📍"))
 
         self.btn_prev.emoji = DICT_EMOJIS.get("e_last", "⏮️")
         self.btn_next.emoji = DICT_EMOJIS.get("e_next", "⏭️")
 
-        self .btn_alliance .label =t (langue ,"prof_hist_btn_alliances",defaut ="Alliances")
-        self .btn_alliance .emoji =DICT_EMOJIS .get ("e_alliance_icon","🛡️")
+        self.current_cat = "pseudo"
+        self.current_page = 0
+        self._update_navigation()
 
-        self .btn_position .label =t (langue ,"prof_hist_btn_mouvements",defaut ="Mouvements")
+    def _update_navigation(self):
+        self.clear_items()
 
-        self .btn_position .emoji =DICT_EMOJIS .get ("e_moove",DICT_EMOJIS .get ("e_compass","📍"))
-
-        self .btn_prev .emoji =DICT_EMOJIS .get ("e_last","⏮️")
-        self .btn_next .emoji =DICT_EMOJIS .get ("e_next","⏭️")
-
-        self .current_cat ="pseudo"
-        self .current_page =0 
-        self ._update_navigation ()
-
-    def _update_navigation (self ):
-        self .clear_items ()
-
-        self .btn_pseudo .style =(
-        discord .ButtonStyle .primary if self .current_cat =="pseudo"else discord .ButtonStyle .secondary 
+        self.btn_pseudo.style = (
+            discord.ButtonStyle.primary if self.current_cat == "pseudo" else discord.ButtonStyle.secondary
         )
-        self .btn_alliance .style =(
-        discord .ButtonStyle .primary if self .current_cat =="alliance"else discord .ButtonStyle .secondary 
+        self.btn_alliance.style = (
+            discord.ButtonStyle.primary if self.current_cat == "alliance" else discord.ButtonStyle.secondary
         )
-        self .btn_position .style =(
-        discord .ButtonStyle .primary if self .current_cat =="position"else discord .ButtonStyle .secondary 
+        self.btn_position.style = (
+            discord.ButtonStyle.primary if self.current_cat == "position" else discord.ButtonStyle.secondary
         )
 
-        self .add_item (self .btn_pseudo )
-        self .add_item (self .btn_alliance )
-        self .add_item (self .btn_position )
+        self.add_item(self.btn_pseudo)
+        self.add_item(self.btn_alliance)
+        self.add_item(self.btn_position)
 
-        if len (self .embeds_dict [self .current_cat ])>1 :
-            self .add_item (self .btn_prev )
-            self .add_item (self .btn_next )
+        if len(self.embeds_dict[self.current_cat]) > 1:
+            self.add_item(self.btn_prev)
+            self.add_item(self.btn_next)
 
     async def _switch_category(self, interaction: discord.Interaction, cat: str):
         self.current_cat = cat
@@ -93,14 +83,14 @@ class HistoriqueView(discord.ui.View):
             self.message = interaction.message
         await interaction.response.edit_message(embed=self.embeds_dict[self.current_cat][0], view=self)
 
-    async def on_timeout (self ):
-        for child in self .children :
-            child .disabled =True 
-        if hasattr (self ,"message")and self .message :
-            try :
-                await self .message .edit (view =self )
-            except discord .HTTPException :
-                pass 
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if hasattr(self, "message") and self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
 
     @discord.ui.button(row=0)
     async def btn_pseudo(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -129,33 +119,34 @@ class HistoriqueView(discord.ui.View):
         await interaction.response.edit_message(embed=self.embeds_dict[self.current_cat][self.current_page], view=self)
 
 
-class ProfilsCog (commands .Cog ):
-    alliance_group =app_commands .Group (name ="alliance",description ="All commands related to alliances")
-    player_group =app_commands .Group (name ="player",description ="All commands related to players")
+class ProfilsCog(commands.Cog):
+    alliance_group = app_commands.Group(name="alliance", description="All commands related to alliances")
+    player_group = app_commands.Group(name="player", description="All commands related to players")
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.bdd_chemin = BASE_DATA_PATH / "bdd_items_gge.json"
-        # Server Command
+
         self.clr_server = discord.Color.from_rgb(255, 244, 230)
-        # Purple for player group
+
         self.clr_joueur = discord.Color.from_rgb(223, 204, 241)
         self.clr_historique = discord.Color.from_rgb(200, 183, 216)
         self.clr_colombe = discord.Color.from_rgb(160, 146, 172)
         self.clr_compare_j = discord.Color.from_rgb(112, 102, 120)
-        # Green for alliance group
+
         self.clr_alliance = discord.Color.from_rgb(129, 186, 39)
         self.clr_alliance_pp = discord.Color.from_rgb(116, 167, 35)
         self.clr_alliance_property = discord.Color.from_rgb(92, 133, 28)
         self.clr_scanner = discord.Color.from_rgb(64, 93, 19)
         self.clr_descalli = discord.Color.from_rgb(77, 111, 23)
 
-        self .clr_server =discord .Color .from_rgb (255 ,244 ,230 )
+    @app_commands.command(name="server", description="Affiche les statistiques globales de ton serveur")
+    async def server_stats(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True)
 
-        self .clr_joueur =discord .Color .from_rgb (223 ,204 ,241 )
-        self .clr_historique =discord .Color .from_rgb (200 ,183 ,216 )
-        self .clr_colombe =discord .Color .from_rgb (160 ,146 ,172 )
-        self .clr_compare_j =discord .Color .from_rgb (112 ,102 ,120 )
+        langue, serveur = await get_server_config(interaction)
+        headers = await get_api_headers(custom_server=serveur)
+        session = self.bot.session
 
         local_data = {}
         try:
@@ -185,74 +176,36 @@ class ProfilsCog (commands .Cog ):
         except Exception as e:
             logger.error(f"Erreur API /server/statistics : {e}")
 
-
-
-    @app_commands .command (name ="server",description ="Affiche les statistiques globales de ton serveur")
-    async def server_stats (self ,interaction :discord .Interaction ):
-        await interaction .response .defer (thinking =True )
-
-        langue ,serveur =await get_server_config (interaction )
-        headers =await get_api_headers (custom_server =serveur )
-        session =self .bot .session 
-
-        local_data ={}
-        try :
-            scan_dir =BASE_DATA_PATH /"server_scans"/serveur 
-            if scan_dir .exists ():
-                fichiers =list (scan_dir .glob ("*.json"))
-                if fichiers :
-                    latest_file =max (fichiers ,key =lambda p :p .stat ().st_mtime )
-                    with open (latest_file ,encoding ="utf-8")as f :
-                        local_data =json .load (f )
-        except :
-            pass 
-
-        api_current ={}
-        api_previous ={}
-        try :
-            url ="https://api.gge-tracker.com/api/v1/server/statistics"
-            async with session .get (url ,headers =headers ,timeout =10 )as r :
-                if r .status ==200 :
-                    data =await r .json ()
-                    if isinstance (data ,list )and len (data )>0 :
-                        api_current =data [-1 ]
-                        if len (data )>1 :
-                            api_previous =data [-2 ]
-                    elif isinstance (data ,dict ):
-                        api_current =data 
-        except Exception as e :
-            logger .error (f"Erreur API /server/statistics : {e}")
-
-        if not api_current and not local_data :
-            err_msg =t (
-            langue ,
-            "server_err_no_data",
-            defaut ="{e_error} Impossible de récupérer les statistiques du serveur pour le moment.",
+        if not api_current and not local_data:
+            err_msg = t(
+                langue,
+                "server_err_no_data",
+                defaut="{e_error} Impossible de récupérer les statistiques du serveur pour le moment.",
             )
-            return await interaction .followup .send (err_msg )
+            return await interaction.followup.send(err_msg)
 
         def fmt(n):
             if n is None:
                 return "0"
-            return f"{int(n):,}".replace (","," ")
+            return f"{int(n):,}".replace(",", " ")
 
-        def get_val (key ,default =0 ):
-            return api_current .get (key )or local_data .get (key ,local_data .get ("stats",{}).get (key ,default ))
+        def get_val(key, default=0):
+            return api_current.get(key) or local_data.get(key, local_data.get("stats", {}).get(key, default))
 
-        def get_diff (key ):
-            if api_previous and api_current .get (key )is not None and api_previous .get (key )is not None :
-                return float (api_current [key ])-float (api_previous [key ])
-            return 0 
+        def get_diff(key):
+            if api_previous and api_current.get(key) is not None and api_previous.get(key) is not None:
+                return float(api_current[key]) - float(api_previous[key])
+            return 0
 
         e_up = DICT_EMOJIS.get("e_std_chart_increasing", "📈")
         e_down = DICT_EMOJIS.get("e_std_chart_decreasing", "📉")
 
-        def format_var (val ):
-            if val ==0 :
+        def format_var(val):
+            if val == 0:
                 return ""
-            elif val >0 :
+            elif val > 0:
                 return f" {e_up} (+`{fmt(val)}`)"
-            else :
+            else:
                 return f" {e_down} (`{fmt(val)}`)"
 
         p_count = get_val("players_count")
@@ -261,20 +214,20 @@ class ProfilsCog (commands .Cog ):
         p_chg_alli = get_val("players_who_changed_alliance")
         p_chg_name = get_val("players_who_changed_name")
 
-        p_count_var =format_var (get_diff ("players_count"))
-        a_count_var =format_var (get_diff ("alliance_count"))
-        p_peace_var =format_var (get_diff ("players_in_peace"))
+        p_count_var = format_var(get_diff("players_count"))
+        a_count_var = format_var(get_diff("alliance_count"))
+        p_peace_var = format_var(get_diff("players_in_peace"))
 
         avg_lvl_raw = get_val("avg_level")
         avg_lvl = f"70/{int(avg_lvl_raw) - 70}" if avg_lvl_raw > 70 else str(int(avg_lvl_raw))
 
-        lvl_diff =get_diff ("avg_level")
-        lvl_var =(
-        f" {e_up} (+`{round(lvl_diff, 2)}`)"
-        if lvl_diff >0 
-        else f" {e_down} (`{round(lvl_diff, 2)}`)"
-        if lvl_diff <0 
-        else ""
+        lvl_diff = get_diff("avg_level")
+        lvl_var = (
+            f" {e_up} (+`{round(lvl_diff, 2)}`)"
+            if lvl_diff > 0
+            else f" {e_down} (`{round(lvl_diff, 2)}`)"
+            if lvl_diff < 0
+            else ""
         )
 
         t_might = get_val("total_might")
@@ -303,9 +256,9 @@ class ProfilsCog (commands .Cog ):
         titre = t(
             langue, "server_title", serv=serveur.upper(), defaut="{e_icon_world} Statistiques Globales - Serveur {serv}"
         )
-        desc =t (langue ,"server_desc",ts =timestamp_str ,defaut ="Actualisation des données : {ts}")
+        desc = t(langue, "server_desc", ts=timestamp_str, defaut="Actualisation des données : {ts}")
 
-        embed =discord .Embed (title =titre ,description =desc ,color =self .clr_server )
+        embed = discord.Embed(title=titre, description=desc, color=self.clr_server)
 
         lbl_demo_title = t(langue, "server_demo_title", defaut="{e_players} Démographie")
         lbl_demo_val = t(
@@ -370,9 +323,6 @@ class ProfilsCog (commands .Cog ):
         await setup_embed_footer(embed, interaction, langue)
         await interaction.followup.send(embed=embed)
 
-    # ========================================================
-    # 👑 COMMANDE : PLAYER PROFILE
-    # ========================================================
     @player_group.command(name="profile", description="Detailed player profile")
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def player_info(self, interaction: discord.Interaction, player: str):
@@ -462,14 +412,13 @@ class ProfilsCog (commands .Cog ):
             }
             sort_priority = {1: 0, 4: 1, 12: 2, 3: 3, 22: 4, 23: 5, 24: 7, 26: 6}
 
-            alli_title =t (langue ,"prof_alli_title",defaut ="{e_alliance_icon} Alliance")
-            embed .add_field (name =alli_title ,value =f"{alliance_display}",inline =False )
+            if outposts:
+                outposts.sort(key=lambda x: (sort_priority.get(int(x.get("type", 99)), 99), x.get("world_id", 0)))
 
-            if outposts :
-                coords_txt =""
-                for op in outposts [:10 ]:
-                    emoji =type_emojis .get (int (op .get ("type",99 )),"?")
-                    w_emoji =op .get ("world_emoji","🗺️")
+            collected = full_json.get("collected_at", discord.utils.utcnow())
+            if not isinstance(collected, datetime):
+                collected = discord.utils.utcnow()
+            ts = int(collected.timestamp())
 
             embed_title = t(
                 langue,
@@ -567,15 +516,15 @@ class ProfilsCog (commands .Cog ):
                     count=len(outposts),
                     defaut="{e_compass} Positions ({count})",
                 )
-                embed .add_field (name =pos_title ,value =coords_txt [:1024 ],inline =False )
+                embed.add_field(name=pos_title, value=coords_txt[:1024], inline=False)
 
-            current_vassals =data .get ("vassal_villages",[])
-            if current_vassals :
-                v_glace =len ([v for v in current_vassals if v .get ("world_id")==2 ])
-                v_sable =len ([v for v in current_vassals if v .get ("world_id")==1 ])
-                v_pic =len ([v for v in current_vassals if v .get ("world_id")==3 ])
-                v_orage =len ([v for v in current_vassals if v .get ("world_id")==4 ])
-                v_emp =len ([v for v in current_vassals if v .get ("world_id")==0 ])
+            current_vassals = data.get("vassal_villages", [])
+            if current_vassals:
+                v_glace = len([v for v in current_vassals if v.get("world_id") == 2])
+                v_sable = len([v for v in current_vassals if v.get("world_id") == 1])
+                v_pic = len([v for v in current_vassals if v.get("world_id") == 3])
+                v_orage = len([v for v in current_vassals if v.get("world_id") == 4])
+                v_emp = len([v for v in current_vassals if v.get("world_id") == 0])
 
                 v_txt = t(
                     langue,
@@ -600,11 +549,11 @@ class ProfilsCog (commands .Cog ):
                     count=len(current_vassals),
                     defaut="{e_date} Villages à Ressources ({count})",
                 )
-                embed .add_field (name =vr_title ,value =f"{v_txt}\n\n{v_coords}"[:1024 ],inline =False )
+                embed.add_field(name=vr_title, value=f"{v_txt}\n\n{v_coords}"[:1024], inline=False)
 
-            await setup_embed_footer (embed ,interaction ,langue )
-            await interaction .followup .send (embed =embed )
-            await prompt_vote_if_lucky (interaction ,probability_percent =8 ,langue =langue )
+            await setup_embed_footer(embed, interaction, langue)
+            await interaction.followup.send(embed=embed)
+            await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
         except Exception as e:
             logger.error(f"❌ [Profils - Joueur] Erreur fatale : {traceback.format_exc()}")
@@ -612,14 +561,11 @@ class ProfilsCog (commands .Cog ):
                 await interaction.followup.send(
                     t(langue, "prof_err_internal", defaut="{e_error} Erreur système interne.")
                 )
-            except :
-                pass 
+            except:
+                pass
 
-
-
-
-    async def _get_player_full_data (
-    self ,player_name :str ,interaction :discord .Interaction =None ,langue :str ="fr"
+    async def _get_player_full_data(
+        self, player_name: str, interaction: discord.Interaction = None, langue: str = "fr"
     ):
         headers = await get_api_headers(interaction)
         serveur = headers.get("gge-server", "E4K_FR1")
@@ -637,12 +583,12 @@ class ProfilsCog (commands .Cog ):
             26: t(langue, "prof_castle_26", defaut="Monument"),
         }
 
-        worlds ={
-        0 :t (langue ,"prof_world_0",defaut ="Le Grand Empire"),
-        1 :t (langue ,"prof_world_1",defaut ="Les Sables Brûlants"),
-        2 :t (langue ,"prof_world_2",defaut ="Glacier Éternel"),
-        3 :t (langue ,"prof_world_3",defaut ="Pics du Feu"),
-        4 :t (langue ,"prof_world_4",defaut ="Les Îles Orageuses"),
+        worlds = {
+            0: t(langue, "prof_world_0", defaut="Le Grand Empire"),
+            1: t(langue, "prof_world_1", defaut="Les Sables Brûlants"),
+            2: t(langue, "prof_world_2", defaut="Glacier Éternel"),
+            3: t(langue, "prof_world_3", defaut="Pics du Feu"),
+            4: t(langue, "prof_world_4", defaut="Les Îles Orageuses"),
         }
 
         world_emojis = {
@@ -653,59 +599,57 @@ class ProfilsCog (commands .Cog ):
             4: DICT_EMOJIS.get("e_dungeon4", "<:dungeon4:1512573845737963722>"),
         }
 
-        txt_unk_world =t (langue ,"prof_world_unknown",defaut ="Monde inconnu")
-        txt_unk_castle =t (langue ,"prof_castle_unknown",defaut ="Type inconnu")
+        txt_unk_world = t(langue, "prof_world_unknown", defaut="Monde inconnu")
+        txt_unk_castle = t(langue, "prof_castle_unknown", defaut="Type inconnu")
 
         safe_name = quote(str(player_name))
         search_url = f"{api_url}/players/{safe_name}"
 
-        try :
-            async with session .get (search_url ,headers =headers ,timeout =15 )as response :
-                if response .status !=200 :
-                    return None 
-                basic_info =await response .json ()
-                if isinstance (basic_info ,list ):
-                    if not basic_info :
-                        return None 
-                    basic_info =basic_info [0 ]
+        session = self.bot.session
+        if not session:
+            return None
 
-            player_id =basic_info .get ("player_id")
-            if not player_id :
-                return None 
+        try:
+            async with session.get(search_url, headers=headers, timeout=15) as response:
+                if response.status != 200:
+                    return None
+                basic_info = await response.json()
+                if isinstance(basic_info, list):
+                    if not basic_info:
+                        return None
+                    basic_info = basic_info[0]
 
-            stats_url =f"{api_url}/statistics/ranking/player/{player_id}"
-            async with session .get (stats_url ,headers =headers ,timeout =15 )as stats_response :
-                stats_data ={}
-                if stats_response .status ==200 :
-                    stats_data =await stats_response .json ()
+            player_id = basic_info.get("player_id")
+            if not player_id:
+                return None
 
-            castle_names_map ={}
-            search_castles_url =f"{api_url}/castle/search/{safe_name}"
+            stats_url = f"{api_url}/statistics/ranking/player/{player_id}"
+            async with session.get(stats_url, headers=headers, timeout=15) as stats_response:
+                stats_data = {}
+                if stats_response.status == 200:
+                    stats_data = await stats_response.json()
 
-            try :
-                async with session .get (search_castles_url ,headers =headers ,timeout =10 )as c_response :
-                    if c_response .status ==200 :
-                        c_data =await c_response .json ()
-                        if isinstance (c_data ,list ):
+            castle_names_map = {}
+            search_castles_url = f"{api_url}/castle/search/{safe_name}"
 
-                            async def fetch_castle_name (castle_id ,kingdom_id ,cx ,cy ):
-                                analysis_url =f"{api_url}/castle/analysis/{castle_id}?kingdomId={kingdom_id}"
-                                try :
-                                    async with session .get (analysis_url ,headers =headers ,timeout =5 )as a_response :
-                                        if a_response .status ==200 :
-                                            a_data =await a_response .json ()
-                                            c_name =None 
+            try:
+                async with session.get(search_castles_url, headers=headers, timeout=10) as c_response:
+                    if c_response.status == 200:
+                        c_data = await c_response.json()
+                        if isinstance(c_data, list):
 
-                                            if isinstance (a_data ,list )and len (a_data )>0 :
-                                                c_name =a_data [0 ].get ("castleName")
-                                            elif isinstance (a_data ,dict ):
-                                                c_name =a_data .get ("castleName")
+                            async def fetch_castle_name(castle_id, kingdom_id, cx, cy):
+                                analysis_url = f"{api_url}/castle/analysis/{castle_id}?kingdomId={kingdom_id}"
+                                try:
+                                    async with session.get(analysis_url, headers=headers, timeout=5) as a_response:
+                                        if a_response.status == 200:
+                                            a_data = await a_response.json()
+                                            c_name = None
 
-                                            if c_name :
-                                                return (int (cx ),int (cy )),c_name 
-                                except Exception :
-                                    pass 
-                                return None ,None 
+                                            if isinstance(a_data, list) and len(a_data) > 0:
+                                                c_name = a_data[0].get("castleName")
+                                            elif isinstance(a_data, dict):
+                                                c_name = a_data.get("castleName")
 
                                             if c_name:
                                                 return (int(cx), int(cy)), c_name
@@ -713,163 +657,171 @@ class ProfilsCog (commands .Cog ):
                                     pass
                                 return None, None
 
-                                if c_id is not None and k_id is not None and cx is not None and cy is not None :
-                                    tasks .append (fetch_castle_name (c_id ,k_id ,int (cx ),int (cy )))
+                            tasks = []
+                            for c in c_data:
+                                c_id = c.get("id")
+                                k_id = c.get("kingdomId")
+                                cx = c.get("positionX")
+                                cy = c.get("positionY")
 
-                            if tasks :
-                                results =await asyncio .gather (*tasks )
-                                for coords ,name in results :
-                                    if coords and name :
-                                        castle_names_map [coords ]=name 
+                                if c_id is not None and k_id is not None and cx is not None and cy is not None:
+                                    tasks.append(fetch_castle_name(c_id, k_id, int(cx), int(cy)))
 
-            except Exception as e :
-                logger .warning (f"⚠️ [API] Impossible de lier les noms de châteaux pour {player_name}: {e}")
+                            if tasks:
+                                results = await asyncio.gather(*tasks)
+                                for coords, name in results:
+                                    if coords and name:
+                                        castle_names_map[coords] = name
 
-            outposts =[]
-            vassal_villages =[]
+            except Exception as e:
+                logger.warning(f"⚠️ [API] Impossible de lier les noms de châteaux pour {player_name}: {e}")
 
-            for c in stats_data .get ("castles",[]):
-                if len (c )>=3 :
-                    t_id =c [2 ]
-                    cx ,cy =int (c [0 ]),int (c [1 ])
-                    struct ={
-                    "world_id":0 ,
-                    "coords_x":cx ,
-                    "coords_y":cy ,
-                    "type":t_id ,
-                    "world_label":worlds .get (0 ,worlds [0 ]),
-                    "world_emoji":world_emojis .get (0 ,"?"),
-                    "type_label":castle_types .get (t_id ,f"{txt_unk_castle} ({t_id})"),
-                    "custom_name":castle_names_map .get ((cx ,cy )),
+            outposts = []
+            vassal_villages = []
+
+            for c in stats_data.get("castles", []):
+                if len(c) >= 3:
+                    t_id = c[2]
+                    cx, cy = int(c[0]), int(c[1])
+                    struct = {
+                        "world_id": 0,
+                        "coords_x": cx,
+                        "coords_y": cy,
+                        "type": t_id,
+                        "world_label": worlds.get(0, worlds[0]),
+                        "world_emoji": world_emojis.get(0, "?"),
+                        "type_label": castle_types.get(t_id, f"{txt_unk_castle} ({t_id})"),
+                        "custom_name": castle_names_map.get((cx, cy)),
                     }
-                    if t_id ==10 :
-                        vassal_villages .append (struct )
-                    else :
-                        outposts .append (struct )
+                    if t_id == 10:
+                        vassal_villages.append(struct)
+                    else:
+                        outposts.append(struct)
 
-            for c in stats_data .get ("castles_realm",[]):
-                if len (c )>=4 :
-                    w_id ,t_id =c [0 ],c [3 ]
-                    cx ,cy =int (c [1 ]),int (c [2 ])
-                    struct ={
-                    "world_id":w_id ,
-                    "coords_x":cx ,
-                    "coords_y":cy ,
-                    "type":t_id ,
-                    "world_label":worlds .get (w_id ,f"{txt_unk_world} ({w_id})"),
-                    "world_emoji":world_emojis .get (w_id ,"?"),
-                    "type_label":castle_types .get (t_id ,f"{txt_unk_castle} ({t_id})"),
-                    "custom_name":castle_names_map .get ((cx ,cy )),
+            for c in stats_data.get("castles_realm", []):
+                if len(c) >= 4:
+                    w_id, t_id = c[0], c[3]
+                    cx, cy = int(c[1]), int(c[2])
+                    struct = {
+                        "world_id": w_id,
+                        "coords_x": cx,
+                        "coords_y": cy,
+                        "type": t_id,
+                        "world_label": worlds.get(w_id, f"{txt_unk_world} ({w_id})"),
+                        "world_emoji": world_emojis.get(w_id, "?"),
+                        "type_label": castle_types.get(t_id, f"{txt_unk_castle} ({t_id})"),
+                        "custom_name": castle_names_map.get((cx, cy)),
                     }
-                    if t_id ==10 :
-                        vassal_villages .append (struct )
-                    else :
-                        outposts .append (struct )
+                    if t_id == 10:
+                        vassal_villages.append(struct)
+                    else:
+                        outposts.append(struct)
 
-            for v in stats_data .get ("villages",[]):
-                if len (v )>=3 :
-                    w_id =v [0 ]
-                    struct ={
-                    "world_id":w_id ,
-                    "coords_x":v [1 ],
-                    "coords_y":v [2 ],
-                    "type":10 ,
-                    "world_label":worlds .get (w_id ,f"{txt_unk_world} ({w_id})"),
-                    "world_emoji":world_emojis .get (w_id ,"?"),
-                    "type_label":castle_types .get (10 ,t (langue ,"prof_castle_10",defaut ="Village à Ressource")),
+            for v in stats_data.get("villages", []):
+                if len(v) >= 3:
+                    w_id = v[0]
+                    struct = {
+                        "world_id": w_id,
+                        "coords_x": v[1],
+                        "coords_y": v[2],
+                        "type": 10,
+                        "world_label": worlds.get(w_id, f"{txt_unk_world} ({w_id})"),
+                        "world_emoji": world_emojis.get(w_id, "?"),
+                        "type_label": castle_types.get(10, t(langue, "prof_castle_10", defaut="Village à Ressource")),
                     }
-                    vassal_villages .append (struct )
+                    vassal_villages.append(struct)
 
-            parsed_data ={
-            "player_id":basic_info .get ("player_id"),
-            "name":basic_info .get ("player_name"),
-            "level":basic_info .get ("level",0 )or stats_data .get ("level",0 ),
-            "legendary_level":basic_info .get ("legendary_level",0 )or stats_data .get ("legendary_level",0 ),
-            "honor":basic_info .get ("honor",0 ),
-            "main_points":stats_data .get ("might_current",0 )or stats_data .get ("might",0 ),
-            "might_all_time":stats_data .get ("might_all_time",0 ),
-            "max_honor":stats_data .get ("max_honor",0 )or basic_info .get ("max_honor",0 ),
-            "loot_current":stats_data .get ("loot_current",0 )or basic_info .get ("loot_current",0 ),
-            "loot_all_time":stats_data .get ("loot_all_time",0 )or basic_info .get ("loot_all_time",0 ),
-            "peace_disabled_at":basic_info .get ("peace_disabled_at"),
-            "alliance":{
-            "id":basic_info .get ("alliance_id"),
-            "name":basic_info .get ("alliance_name")
-            or stats_data .get ("alliance_name")
-            or t (langue ,"prof_no_alliance",defaut ="Sans alliance"),
-            "rank":basic_info .get ("alliance_rank")or stats_data .get ("alliance_rank"),
-            },
-            "outposts":outposts ,
-            "vassal_villages":vassal_villages ,
+            parsed_data = {
+                "player_id": basic_info.get("player_id"),
+                "name": basic_info.get("player_name"),
+                "level": basic_info.get("level", 0) or stats_data.get("level", 0),
+                "legendary_level": basic_info.get("legendary_level", 0) or stats_data.get("legendary_level", 0),
+                "honor": basic_info.get("honor", 0),
+                "main_points": stats_data.get("might_current", 0) or stats_data.get("might", 0),
+                "might_all_time": stats_data.get("might_all_time", 0),
+                "max_honor": stats_data.get("max_honor", 0) or basic_info.get("max_honor", 0),
+                "loot_current": stats_data.get("loot_current", 0) or basic_info.get("loot_current", 0),
+                "loot_all_time": stats_data.get("loot_all_time", 0) or basic_info.get("loot_all_time", 0),
+                "peace_disabled_at": basic_info.get("peace_disabled_at"),
+                "alliance": {
+                    "id": basic_info.get("alliance_id"),
+                    "name": basic_info.get("alliance_name")
+                    or stats_data.get("alliance_name")
+                    or t(langue, "prof_no_alliance", defaut="Sans alliance"),
+                    "rank": basic_info.get("alliance_rank") or stats_data.get("alliance_rank"),
+                },
+                "outposts": outposts,
+                "vassal_villages": vassal_villages,
             }
 
-            api_timestamp =_get_api_timestamp (stats_data ,basic_info )
+            api_timestamp = _get_api_timestamp(stats_data, basic_info)
 
             return {
-            "collected_at":api_timestamp ,
-            "player_name":basic_info .get ("player_name"),
-            "server":serveur ,
-            "parsed_data":parsed_data ,
+                "collected_at": api_timestamp,
+                "player_name": basic_info.get("player_name"),
+                "server": serveur,
+                "parsed_data": parsed_data,
             }
 
-        except Exception as e :
-            logger .error (f"❌ Erreur API Joueur pour {player_name}: {e}")
-            return None 
+        except Exception as e:
+            logger.error(f"❌ Erreur API Joueur pour {player_name}: {e}")
+            return None
 
+    @player_group.command(name="history", description="Displays a player's complete history")
+    @app_commands.autocomplete(player=joueur_autocomplete)
+    async def history(self, interaction: discord.Interaction, player: str):
+        try:
+            await interaction.response.defer(thinking=True)
+        except:
+            return
 
+        langue, serveur = await get_server_config(interaction)
 
+        p_id = None
+        actualisation_dt = discord.utils.utcnow()
+        try:
+            full_json = await self._get_player_full_data(player, interaction, langue=langue)
+            if full_json:
+                data = full_json.get("parsed_data", {})
+                p_id = str(data.get("player_id", ""))
+                actualisation_dt = full_json.get("collected_at", actualisation_dt)
+        except:
+            pass
 
         if not p_id:
             await interaction.followup.send(t(langue, "prof_hist_err_id", j=player, defaut="{e_error} ID introuvable."))
             return
 
-        langue ,serveur =await get_server_config (interaction )
+        headers = await get_api_headers(interaction)
 
-        p_id =None 
-        actualisation_dt =discord .utils .utcnow ()
-        try :
-            full_json =await self ._get_player_full_data (player ,interaction ,langue =langue )
-            if full_json :
-                data =full_json .get ("parsed_data",{})
-                p_id =str (data .get ("player_id",""))
-                actualisation_dt =full_json .get ("collected_at",actualisation_dt )
-        except :
-            pass 
-
-        if not p_id :
-            await interaction .followup .send (t (langue ,"prof_hist_err_id",j =player ,defaut ="{e_error} ID introuvable."))
-            return 
-
-        headers =await get_api_headers (interaction )
-
-        urls_to_fetch ={
-        "pseudo":f"https://api.gge-tracker.com/api/v1/updates/players/{p_id}/names",
-        "alliance":f"https://api.gge-tracker.com/api/v1/updates/players/{p_id}/alliances",
-        "position":f"https://api.gge-tracker.com/api/v1/server/movements?page=1&castleType=1&movementType=3&search={quote(player)}&searchType=player",
+        urls_to_fetch = {
+            "pseudo": f"https://api.gge-tracker.com/api/v1/updates/players/{p_id}/names",
+            "alliance": f"https://api.gge-tracker.com/api/v1/updates/players/{p_id}/alliances",
+            "position": f"https://api.gge-tracker.com/api/v1/server/movements?page=1&castleType=1&movementType=3&search={quote(player)}&searchType=player",
         }
 
-        results ={}
-        session =self .bot .session 
-        if session :
+        results = {}
+        session = self.bot.session
+        if session:
 
-            async def fetch_url (name ,url ):
-                try :
-                    async with session .get (url ,headers =headers ,timeout =10 )as resp :
-                        if resp .status ==200 :
-                            results [name ]=await resp .json ()
-                except :
-                    pass 
+            async def fetch_url(name, url):
+                try:
+                    async with session.get(url, headers=headers, timeout=10) as resp:
+                        if resp.status == 200:
+                            results[name] = await resp.json()
+                except:
+                    pass
 
-            tasks =[fetch_url (name ,url )for name ,url in urls_to_fetch .items ()]
-            await asyncio .gather (*tasks )
+            tasks = [fetch_url(name, url) for name, url in urls_to_fetch.items()]
+            await asyncio.gather(*tasks)
 
-        def parse_date (iso_str ):
-            if not iso_str :
-                return t (langue ,"prof_hist_unknown_date",defaut ="Date inconnue")
-            return get_discord_timestamp (iso_str ,"d",langue )
+        def parse_date(iso_str):
+            if not iso_str:
+                return t(langue, "prof_hist_unknown_date", defaut="Date inconnue")
+            return get_discord_timestamp(iso_str, "d", langue)
 
-        embeds_dict ={"pseudo":[],"alliance":[],"position":[]}
-        lines_per_page =12 
+        embeds_dict = {"pseudo": [], "alliance": [], "position": []}
+        lines_per_page = 12
 
         categories = [
             {
@@ -892,19 +844,19 @@ class ProfilsCog (commands .Cog ):
             },
         ]
 
-        has_any_data =False 
-        unk_val =t (langue ,"prof_hist_unknown",defaut ="*Inconnu*")
-        no_alli_val =t (langue ,"prof_hist_no_alli",defaut ="*Sans alliance*")
+        has_any_data = False
+        unk_val = t(langue, "prof_hist_unknown", defaut="*Inconnu*")
+        no_alli_val = t(langue, "prof_hist_no_alli", defaut="*Sans alliance*")
 
-        if isinstance (actualisation_dt ,str ):
-            try :
-                actualisation_dt =datetime .fromisoformat (actualisation_dt .replace ("Z","+00:00"))
-            except :
-                actualisation_dt =discord .utils .utcnow ()
+        if isinstance(actualisation_dt, str):
+            try:
+                actualisation_dt = datetime.fromisoformat(actualisation_dt.replace("Z", "+00:00"))
+            except:
+                actualisation_dt = discord.utils.utcnow()
 
-        ts_act =int (actualisation_dt .timestamp ())
-        lbl_date =t (langue ,"guerre_lbl_date_data",defaut ="⏱️ **Données datées de :**")
-        str_date_header =f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
+        ts_act = int(actualisation_dt.timestamp())
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
+        str_date_header = f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
 
         e_members_ic = DICT_EMOJIS.get("e_members", "👥")
         e_alli_ic = DICT_EMOJIS.get("e_icon_alliance", "🛡️")
@@ -929,62 +881,55 @@ class ProfilsCog (commands .Cog ):
                     x_new, y_new = item.get("position_x_new"), item.get("position_y_new")
                     lines.append(f"{e_moove_ic} {d} : `{x_old}:{y_old}` ➔ `{x_new}:{y_new}`")
 
-            for item in raw_data :
-                d =parse_date (item .get ("date",item .get ("created_at")))
-                if cat ["key"]=="pseudo":
-                    old =item .get ("old_player_name")or unk_val 
-                    new =item .get ("new_player_name")or unk_val 
-                    lines .append (f"{e_members_ic} {d} : ~~{old}~~ ➔ **{new}**")
-                elif cat ["key"]=="alliance":
-                    old =item .get ("old_alliance_name")or no_alli_val 
-                    new =item .get ("new_alliance_name")or no_alli_val 
-                    lines .append (f"{e_alli_ic} {d} : *{old}* ➔ **{new}**")
-                elif cat ["key"]=="position":
-                    x_old ,y_old =item .get ("position_x_old"),item .get ("position_y_old")
-                    x_new ,y_new =item .get ("position_x_new"),item .get ("position_y_new")
-                    lines .append (f"{e_moove_ic} {d} : `{x_old}:{y_old}` ➔ `{x_new}:{y_new}`")
+            if lines:
+                has_any_data = True
+                for i in range(0, len(lines), lines_per_page):
+                    chunk = lines[i : i + lines_per_page]
+                    page_num = (i // lines_per_page) + 1
+                    total_pages_cat = (len(lines) + lines_per_page - 1) // lines_per_page
+                    suffixe_titre = f" ({page_num}/{total_pages_cat})" if total_pages_cat > 1 else ""
 
-            if lines :
-                has_any_data =True 
-                for i in range (0 ,len (lines ),lines_per_page ):
-                    chunk =lines [i :i +lines_per_page ]
-                    page_num =(i //lines_per_page )+1 
-                    total_pages_cat =(len (lines )+lines_per_page -1 )//lines_per_page 
-                    suffixe_titre =f" ({page_num}/{total_pages_cat})"if total_pages_cat >1 else ""
-
-                    emb =discord .Embed (
-                    title =f"{cat['emoji']} {cat['title']} - {player}{suffixe_titre}",
-                    description =str_date_header +"\n".join (chunk ),
-                    color =self .clr_historique ,
+                    emb = discord.Embed(
+                        title=f"{cat['emoji']} {cat['title']} - {player}{suffixe_titre}",
+                        description=str_date_header + "\n".join(chunk),
+                        color=self.clr_historique,
                     )
-                    await setup_embed_footer (emb ,interaction ,langue )
-                    embeds_dict [cat ["key"]].append (emb )
-            else :
-                desc_empty =t (langue ,"prof_hist_no_data_cat",defaut =" Aucun historique disponible.")
-                emb =discord .Embed (
-                title =f"{cat['emoji']} {cat['title']} - {player}",
-                description =str_date_header +desc_empty ,
-                color =self .clr_historique ,
+                    await setup_embed_footer(emb, interaction, langue)
+                    embeds_dict[cat["key"]].append(emb)
+            else:
+                desc_empty = t(langue, "prof_hist_no_data_cat", defaut=" Aucun historique disponible.")
+                emb = discord.Embed(
+                    title=f"{cat['emoji']} {cat['title']} - {player}",
+                    description=str_date_header + desc_empty,
+                    color=self.clr_historique,
                 )
-                await setup_embed_footer (emb ,interaction ,langue )
-                embeds_dict [cat ["key"]].append (emb )
+                await setup_embed_footer(emb, interaction, langue)
+                embeds_dict[cat["key"]].append(emb)
 
-        if not has_any_data :
-            desc_empty_global =t (langue ,"prof_hist_empty_desc",defaut ="Aucun historique trouvé.")
-            embed_vide =discord .Embed (
-            title =t (langue ,"prof_hist_empty_title",j =player ,defaut =f"Dossier - {player}"),
-            description =str_date_header +desc_empty_global ,
-            color =self .clr_historique ,
+        if not has_any_data:
+            desc_empty_global = t(langue, "prof_hist_empty_desc", defaut="Aucun historique trouvé.")
+            embed_vide = discord.Embed(
+                title=t(langue, "prof_hist_empty_title", j=player, defaut=f"Dossier - {player}"),
+                description=str_date_header + desc_empty_global,
+                color=self.clr_historique,
             )
-            await setup_embed_footer (embed_vide ,interaction ,langue )
-            await interaction .followup .send (embed =embed_vide )
-            return 
+            await setup_embed_footer(embed_vide, interaction, langue)
+            await interaction.followup.send(embed=embed_vide)
+            return
 
-        view =HistoriqueView (embeds_dict ,interaction ,langue =langue )
-        view .message =await interaction .followup .send (embed =embeds_dict [view .current_cat ][0 ],view =view ,wait =True )
-        await prompt_vote_if_lucky (interaction ,probability_percent =8 ,langue =langue )
+        view = HistoriqueView(embeds_dict, interaction, langue=langue)
+        view.message = await interaction.followup.send(embed=embeds_dict[view.current_cat][0], view=view, wait=True)
+        await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
+    @player_group.command(name="dove", description="Check the date and time a player's protection ended")
+    @app_commands.autocomplete(player=joueur_autocomplete)
+    async def dove(self, interaction: discord.Interaction, player: str):
+        await interaction.response.defer()
+        langue, _ = await get_server_config(interaction)
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
 
+        headers = await get_api_headers(interaction)
+        url = f"https://api.gge-tracker.com/api/v1/players/{quote(player)}"
 
         session = self.bot.session
         if not session:
@@ -1006,9 +951,9 @@ class ProfilsCog (commands .Cog ):
                             t(langue, "prof_col_none", j=player, defaut="{e_information} Aucune colombe.")
                         )
 
-                    dt_peace =datetime .fromisoformat (peace_str .replace ("Z","+00:00"))
-                    maintenant =discord .utils .utcnow ()
-                    ts =int (dt_peace .timestamp ())
+                    dt_peace = datetime.fromisoformat(peace_str.replace("Z", "+00:00"))
+                    maintenant = discord.utils.utcnow()
+                    ts = int(dt_peace.timestamp())
 
                     if dt_peace > maintenant:
                         embed = discord.Embed(
@@ -1016,17 +961,17 @@ class ProfilsCog (commands .Cog ):
                             color=self.clr_colombe,
                         )
 
-                        api_timestamp =_get_api_timestamp (p_data )
-                        ts_act =int (api_timestamp .timestamp ())
-                        embed .description =f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)"
+                        api_timestamp = _get_api_timestamp(p_data)
+                        ts_act = int(api_timestamp.timestamp())
+                        embed.description = f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)"
 
-                        embed .add_field (
-                        name =t (langue ,"prof_col_target",defaut ="Cible"),value =f"**{player}**",inline =False 
+                        embed.add_field(
+                            name=t(langue, "prof_col_target", defaut="Cible"), value=f"**{player}**", inline=False
                         )
-                        embed .add_field (
-                        name =t (langue ,"prof_col_end",defaut ="Fin de protection"),
-                        value =t (langue ,"prof_col_end_val",ts =ts ,defaut =f"<t:{ts}:f>"),
-                        inline =False ,
+                        embed.add_field(
+                            name=t(langue, "prof_col_end", defaut="Fin de protection"),
+                            value=t(langue, "prof_col_end_val", ts=ts, defaut=f"<t:{ts}:f>"),
+                            inline=False,
                         )
 
                         await setup_embed_footer(embed, interaction, langue)
@@ -1050,203 +995,200 @@ class ProfilsCog (commands .Cog ):
         except Exception:
             await interaction.followup.send(t(langue, "prof_col_err_conn", defaut="{e_error} Erreur de connexion."))
 
-
-
-
-    @player_group .command (
-    name ="compare",description ="Responsive comparative analysis and calculation of the hazard index"
+    @player_group.command(
+        name="compare", description="Responsive comparative analysis and calculation of the hazard index"
     )
-    @app_commands .autocomplete (player1 =joueur_autocomplete )
-    @app_commands .autocomplete (player2 =joueur_autocomplete )
-    async def compare (self ,interaction :discord .Interaction ,player1 :str ,player2 :str ):
-        try :
-            await interaction .response .defer (thinking =True )
-        except :
-            return 
+    @app_commands.autocomplete(player1=joueur_autocomplete)
+    @app_commands.autocomplete(player2=joueur_autocomplete)
+    async def compare(self, interaction: discord.Interaction, player1: str, player2: str):
+        try:
+            await interaction.response.defer(thinking=True)
+        except:
+            return
 
-        langue ,_ =await get_server_config (interaction )
+        langue, _ = await get_server_config(interaction)
 
-        headers =await get_api_headers (interaction )
-        session =self .bot .session 
+        headers = await get_api_headers(interaction)
+        session = self.bot.session
 
-        async def scruter_profil_tactique (nom_joueur :str ):
-            profil ={
-            "nom":nom_joueur ,
-            "id":None ,
-            "lvl":0 ,
-            "leg":0 ,
-            "alliance":t (langue ,"guerre_sa",defaut ="Sans alliance"),
-            "alli_might":0 ,
-            "alli_id":0 ,
-            "pp":0 ,
-            "gloire":0 ,
-            "butin":0 ,
-            "rang":9999 ,
-            "feux_count":0 ,
-            "feux_txt":"0",
-            "colombe_txt":t (langue ,"guerre_comp_free",defaut ="Libre"),
-            "malus_colombe":0 ,
-            "malus_feu":0 ,
-            "event_averages":{"nomades":0 ,"samourais":0 ,"corbeaux":0 ,"etrangers":0 },
-            "valide":False ,
-            "raw_api_data":None ,
+        async def scruter_profil_tactique(nom_joueur: str):
+            profil = {
+                "nom": nom_joueur,
+                "id": None,
+                "lvl": 0,
+                "leg": 0,
+                "alliance": t(langue, "guerre_sa", defaut="Sans alliance"),
+                "alli_might": 0,
+                "alli_id": 0,
+                "pp": 0,
+                "gloire": 0,
+                "butin": 0,
+                "rang": 9999,
+                "feux_count": 0,
+                "feux_txt": "0",
+                "colombe_txt": t(langue, "guerre_comp_free", defaut="Libre"),
+                "malus_colombe": 0,
+                "malus_feu": 0,
+                "event_averages": {"nomades": 0, "samourais": 0, "corbeaux": 0, "etrangers": 0},
+                "valide": False,
+                "raw_api_data": None,
             }
 
-            try :
-                base_player_url ="https://api.gge-tracker.com/api/v1/players/"
-                async with session .get (f"{base_player_url}{quote(nom_joueur)}",headers =headers ,timeout =8 )as r :
-                    if r .status !=200 :
-                        return profil 
-                    res_base =await r .json ()
+            try:
+                base_player_url = "https://api.gge-tracker.com/api/v1/players/"
+                async with session.get(f"{base_player_url}{quote(nom_joueur)}", headers=headers, timeout=8) as r:
+                    if r.status != 200:
+                        return profil
+                    res_base = await r.json()
 
-                    if isinstance (res_base ,list )and res_base :
-                        res_base =res_base [0 ]
-                    if not res_base :
-                        return profil 
+                    if isinstance(res_base, list) and res_base:
+                        res_base = res_base[0]
+                    if not res_base:
+                        return profil
 
-                    profil ["raw_api_data"]=res_base 
-                    profil ["id"]=str (res_base .get ("player_id",res_base .get ("id","")))
-                    profil ["nom"]=res_base .get ("player_name",nom_joueur )
-                    profil ["lvl"]=int (res_base .get ("level",0 ))
-                    profil ["leg"]=int (res_base .get ("legendary_level",0 ))
+                    profil["raw_api_data"] = res_base
+                    profil["id"] = str(res_base.get("player_id", res_base.get("id", "")))
+                    profil["nom"] = res_base.get("player_name", nom_joueur)
+                    profil["lvl"] = int(res_base.get("level", 0))
+                    profil["leg"] = int(res_base.get("legendary_level", 0))
 
-                    all_name_raw =res_base .get ("alliance_name")
-                    profil ["alliance"]=(
-                    all_name_raw if all_name_raw else t (langue ,"guerre_sa",defaut ="Sans alliance")
+                    all_name_raw = res_base.get("alliance_name")
+                    profil["alliance"] = (
+                        all_name_raw if all_name_raw else t(langue, "guerre_sa", defaut="Sans alliance")
                     )
-                    profil ["alli_id"]=res_base .get ("allianceId",res_base .get ("alliance_id",0 ))
-                    profil ["valide"]=True 
+                    profil["alli_id"] = res_base.get("allianceId", res_base.get("alliance_id", 0))
+                    profil["valide"] = True
 
-                    peace =res_base .get ("peace_disabled_at")
-                    if peace and peace !="null":
-                        try :
-                            if datetime .fromisoformat (peace .replace ("Z","+00:00"))>discord .utils .utcnow ():
-                                profil ["colombe_txt"]=t (langue ,"guerre_comp_protected",defaut ="Protégé")
-                                profil ["malus_colombe"]=-1.0 
-                        except :
-                            pass 
+                    peace = res_base.get("peace_disabled_at")
+                    if peace and peace != "null":
+                        try:
+                            if datetime.fromisoformat(peace.replace("Z", "+00:00")) > discord.utils.utcnow():
+                                profil["colombe_txt"] = t(langue, "guerre_comp_protected", defaut="Protégé")
+                                profil["malus_colombe"] = -1.0
+                        except:
+                            pass
 
-                if not profil ["id"]:
-                    return profil 
+                if not profil["id"]:
+                    return profil
 
-                rank_endpoint =f"https://api.gge-tracker.com/api/v1/statistics/ranking/player/{profil['id']}"
-                stats_endpoint =f"https://api.gge-tracker.com/api/v1/statistics/player/{profil['id']}"
-                search_endpoint =f"https://api.gge-tracker.com/api/v1/castle/search/{quote(profil['nom'])}"
+                rank_endpoint = f"https://api.gge-tracker.com/api/v1/statistics/ranking/player/{profil['id']}"
+                stats_endpoint = f"https://api.gge-tracker.com/api/v1/statistics/player/{profil['id']}"
+                search_endpoint = f"https://api.gge-tracker.com/api/v1/castle/search/{quote(profil['nom'])}"
 
-                res_rank ,res_stats ,res_castles =await asyncio .gather (
-                *[
-                asyncio .create_task (session .get (rank_endpoint ,headers =headers ,timeout =6 )),
-                asyncio .create_task (session .get (stats_endpoint ,headers =headers ,timeout =6 )),
-                asyncio .create_task (session .get (search_endpoint ,headers =headers ,timeout =6 )),
-                ]
+                res_rank, res_stats, res_castles = await asyncio.gather(
+                    *[
+                        asyncio.create_task(session.get(rank_endpoint, headers=headers, timeout=6)),
+                        asyncio.create_task(session.get(stats_endpoint, headers=headers, timeout=6)),
+                        asyncio.create_task(session.get(search_endpoint, headers=headers, timeout=6)),
+                    ]
                 )
 
-                if res_rank .status ==200 :
-                    dr =await res_rank .json ()
-                    profil ["pp"]=int (dr .get ("might_current",dr .get ("might",0 )))
-                    profil ["gloire"]=int (dr .get ("current_fame",dr .get ("fame",0 )))
-                    profil ["butin"]=int (dr .get ("loot_current",dr .get ("loot",0 )))
-                    profil ["rang"]=int (dr .get ("server_rank",9999 ))
+                if res_rank.status == 200:
+                    dr = await res_rank.json()
+                    profil["pp"] = int(dr.get("might_current", dr.get("might", 0)))
+                    profil["gloire"] = int(dr.get("current_fame", dr.get("fame", 0)))
+                    profil["butin"] = int(dr.get("loot_current", dr.get("loot", 0)))
+                    profil["rang"] = int(dr.get("server_rank", 9999))
 
-                if res_stats .status ==200 :
-                    ds =await res_stats .json ()
-                    pts_dict =ds .get ("points",{})
+                if res_stats.status == 200:
+                    ds = await res_stats.json()
+                    pts_dict = ds.get("points", {})
 
-                    piliers_mapping ={
-                    "nomades":"player_event_nomad_history",
-                    "samourais":"player_event_samurai_history",
-                    "corbeaux":"player_event_bloodcrow_history",
-                    "etrangers":"player_event_war_realms_history",
+                    piliers_mapping = {
+                        "nomades": "player_event_nomad_history",
+                        "samourais": "player_event_samurai_history",
+                        "corbeaux": "player_event_bloodcrow_history",
+                        "etrangers": "player_event_war_realms_history",
                     }
 
-                    for pilier_nom ,cle_api in piliers_mapping .items ():
-                        ev_list =pts_dict .get (cle_api ,[])
-                        if isinstance (ev_list ,list )and ev_list :
-                            valid_entries =[]
-                            for e in ev_list :
-                                d_str =e .get ("date")
-                                pt_str =str (e .get ("point",""))
-                                if d_str and pt_str .replace ("-","").isdigit ():
-                                    try :
-                                        dt =datetime .fromisoformat (d_str .replace ("Z","+00:00"))
-                                        valid_entries .append ((dt ,int (pt_str )))
-                                    except :
-                                        pass 
+                    for pilier_nom, cle_api in piliers_mapping.items():
+                        ev_list = pts_dict.get(cle_api, [])
+                        if isinstance(ev_list, list) and ev_list:
+                            valid_entries = []
+                            for e in ev_list:
+                                d_str = e.get("date")
+                                pt_str = str(e.get("point", ""))
+                                if d_str and pt_str.replace("-", "").isdigit():
+                                    try:
+                                        dt = datetime.fromisoformat(d_str.replace("Z", "+00:00"))
+                                        valid_entries.append((dt, int(pt_str)))
+                                    except:
+                                        pass
 
-                            if not valid_entries :
-                                continue 
+                            if not valid_entries:
+                                continue
 
-                            valid_entries .sort (key =lambda x :x [0 ])
+                            valid_entries.sort(key=lambda x: x[0])
 
-                            event_max_scores =[]
-                            current_max =valid_entries [0 ][1 ]
-                            last_dt =valid_entries [0 ][0 ]
+                            event_max_scores = []
+                            current_max = valid_entries[0][1]
+                            last_dt = valid_entries[0][0]
 
-                            for dt ,pt in valid_entries [1 :]:
-                                if (dt -last_dt ).total_seconds ()>96 *3600 :
-                                    event_max_scores .append (current_max )
-                                    current_max =pt 
-                                else :
-                                    if pt >current_max :
-                                        current_max =pt 
-                                last_dt =dt 
+                            for dt, pt in valid_entries[1:]:
+                                if (dt - last_dt).total_seconds() > 96 * 3600:
+                                    event_max_scores.append(current_max)
+                                    current_max = pt
+                                else:
+                                    if pt > current_max:
+                                        current_max = pt
+                                last_dt = dt
 
-                            event_max_scores .append (current_max )
+                            event_max_scores.append(current_max)
 
-                            derniers_events =event_max_scores [-3 :]
-                            if derniers_events :
-                                profil ["event_averages"][pilier_nom ]=sum (derniers_events )//len (derniers_events )
+                            derniers_events = event_max_scores[-3:]
+                            if derniers_events:
+                                profil["event_averages"][pilier_nom] = sum(derniers_events) // len(derniers_events)
 
-                if res_castles .status ==200 :
-                    dc =await res_castles .json ()
-                    if isinstance (dc ,dict ):
-                        dc =[dc ]
-                    if isinstance (dc ,list ):
-                        c_id =None 
-                        for c in dc :
-                            if not isinstance (c ,dict ):
-                                continue 
-                            if str (c .get ("kingdomId","0"))=="0"and str (c .get ("type","1"))=="1":
-                                c_id =c .get ("id")
-                                break 
+                if res_castles.status == 200:
+                    dc = await res_castles.json()
+                    if isinstance(dc, dict):
+                        dc = [dc]
+                    if isinstance(dc, list):
+                        c_id = None
+                        for c in dc:
+                            if not isinstance(c, dict):
+                                continue
+                            if str(c.get("kingdomId", "0")) == "0" and str(c.get("type", "1")) == "1":
+                                c_id = c.get("id")
+                                break
 
-                        if c_id :
-                            analysis_url =f"https://api.gge-tracker.com/api/v1/castle/analysis/{c_id}"
-                            async with session .get (analysis_url ,headers =headers ,timeout =5 )as a_resp :
-                                if a_resp .status ==200 :
-                                    castle_data =(await a_resp .json ()).get ("data",{})
-                                    all_elements =[]
-                                    for category_list in castle_data .values ():
-                                        if isinstance (category_list ,list ):
-                                            all_elements .extend (category_list )
+                        if c_id:
+                            analysis_url = f"https://api.gge-tracker.com/api/v1/castle/analysis/{c_id}"
+                            async with session.get(analysis_url, headers=headers, timeout=5) as a_resp:
+                                if a_resp.status == 200:
+                                    castle_data = (await a_resp.json()).get("data", {})
+                                    all_elements = []
+                                    for category_list in castle_data.values():
+                                        if isinstance(category_list, list):
+                                            all_elements.extend(category_list)
 
-                                    f_count =sum (
-                                    1 
-                                    for b in all_elements 
-                                    if b .get ("damageFactor")==1 or str (b .get ("damageFactor")).startswith ("1")
+                                    f_count = sum(
+                                        1
+                                        for b in all_elements
+                                        if b.get("damageFactor") == 1 or str(b.get("damageFactor")).startswith("1")
                                     )
-                                    profil ["feux_count"]=f_count 
-                                    profil ["feux_txt"]=f"{f_count}"
-                                    if f_count >0 :
-                                        profil ["malus_feu"]=-1.0 
+                                    profil["feux_count"] = f_count
+                                    profil["feux_txt"] = f"{f_count}"
+                                    if f_count > 0:
+                                        profil["malus_feu"] = -1.0
 
-                if all_name_raw and all_name_raw !="Sans alliance":
-                    try :
-                        alli_url =f"https://api.gge-tracker.com/api/v1/alliances/name/{quote(all_name_raw)}"
-                        async with session .get (alli_url ,headers =headers ,timeout =5 )as ar :
-                            if ar .status ==200 :
-                                da =await ar .json ()
-                                if isinstance (da ,list )and da :
-                                    da =da [0 ]
-                                profil ["alli_might"]=int (da .get ("might_current",da .get ("total_might",0 )))
-                    except :
-                        pass 
+                if all_name_raw and all_name_raw != "Sans alliance":
+                    try:
+                        alli_url = f"https://api.gge-tracker.com/api/v1/alliances/name/{quote(all_name_raw)}"
+                        async with session.get(alli_url, headers=headers, timeout=5) as ar:
+                            if ar.status == 200:
+                                da = await ar.json()
+                                if isinstance(da, list) and da:
+                                    da = da[0]
+                                profil["alli_might"] = int(da.get("might_current", da.get("total_might", 0)))
+                    except:
+                        pass
 
-            except Exception as e :
-                logger .error (f"❌ Erreur sur {nom_joueur} : {e}")
-            return profil 
+            except Exception as e:
+                logger.error(f"❌ Erreur sur {nom_joueur} : {e}")
+            return profil
 
-        p1 ,p2 =await asyncio .gather (scruter_profil_tactique (player1 ),scruter_profil_tactique (player2 ))
+        p1, p2 = await asyncio.gather(scruter_profil_tactique(player1), scruter_profil_tactique(player2))
 
         if not p1["valide"] or not p2["valide"]:
             return await interaction.followup.send(
@@ -1257,39 +1199,39 @@ class ProfilsCog (commands .Cog ):
                 )
             )
 
-        actualisation_dt =_get_api_timestamp (p1 .get ("raw_api_data"),p2 .get ("raw_api_data"))
+        actualisation_dt = _get_api_timestamp(p1.get("raw_api_data"), p2.get("raw_api_data"))
 
-        def duel (v1 ,v2 ,inverse =False ):
-            if v1 ==v2 :
-                return "",""
-            cond =(v1 <v2 )if inverse else (v1 >v2 )
-            return ("▲","")if cond else ("","▲")
+        def duel(v1, v2, inverse=False):
+            if v1 == v2:
+                return "", ""
+            cond = (v1 < v2) if inverse else (v1 > v2)
+            return ("▲", "") if cond else ("", "▲")
 
-        lvl_1 ,lvl_2 =duel ((p1 ["lvl"],p1 ["leg"]),(p2 ["lvl"],p2 ["leg"]))
-        rnk_1 ,rnk_2 =duel (p1 ["rang"],p2 ["rang"],inverse =True )
-        pp_1 ,pp_2 =duel (p1 ["pp"],p2 ["pp"])
-        glr_1 ,glr_2 =duel (p1 ["gloire"],p2 ["gloire"])
-        btn_1 ,btn_2 =duel (p1 ["butin"],p2 ["butin"])
-        am_1 ,am_2 =duel (p1 ["alli_might"],p2 ["alli_might"])
+        lvl_1, lvl_2 = duel((p1["lvl"], p1["leg"]), (p2["lvl"], p2["leg"]))
+        rnk_1, rnk_2 = duel(p1["rang"], p2["rang"], inverse=True)
+        pp_1, pp_2 = duel(p1["pp"], p2["pp"])
+        glr_1, glr_2 = duel(p1["gloire"], p2["gloire"])
+        btn_1, btn_2 = duel(p1["butin"], p2["butin"])
+        am_1, am_2 = duel(p1["alli_might"], p2["alli_might"])
 
-        nom_1 ,nom_2 =duel (p1 ["event_averages"]["nomades"],p2 ["event_averages"]["nomades"])
-        sam_1 ,sam_2 =duel (p1 ["event_averages"]["samourais"],p2 ["event_averages"]["samourais"])
-        cor_1 ,cor_2 =duel (p1 ["event_averages"]["corbeaux"],p2 ["event_averages"]["corbeaux"])
-        et_1 ,et_2 =duel (p1 ["event_averages"]["etrangers"],p2 ["event_averages"]["etrangers"])
+        nom_1, nom_2 = duel(p1["event_averages"]["nomades"], p2["event_averages"]["nomades"])
+        sam_1, sam_2 = duel(p1["event_averages"]["samourais"], p2["event_averages"]["samourais"])
+        cor_1, cor_2 = duel(p1["event_averages"]["corbeaux"], p2["event_averages"]["corbeaux"])
+        et_1, et_2 = duel(p1["event_averages"]["etrangers"], p2["event_averages"]["etrangers"])
 
-        score1 =(
-        sum ([1.0 for x in [lvl_1 ,am_1 ,rnk_1 ,pp_1 ,glr_1 ,btn_1 ]if x ])
-        +sum ([0.25 for x in [nom_1 ,sam_1 ,cor_1 ,et_1 ]if x ])
-        +p1 ["malus_colombe"]
-        +p1 ["malus_feu"]
+        score1 = (
+            sum([1.0 for x in [lvl_1, am_1, rnk_1, pp_1, glr_1, btn_1] if x])
+            + sum([0.25 for x in [nom_1, sam_1, cor_1, et_1] if x])
+            + p1["malus_colombe"]
+            + p1["malus_feu"]
         )
-        score2 =(
-        sum ([1.0 for x in [lvl_2 ,am_2 ,rnk_2 ,pp_2 ,glr_2 ,btn_2 ]if x ])
-        +sum ([0.25 for x in [nom_2 ,sam_2 ,cor_2 ,et_2 ]if x ])
-        +p2 ["malus_colombe"]
-        +p2 ["malus_feu"]
+        score2 = (
+            sum([1.0 for x in [lvl_2, am_2, rnk_2, pp_2, glr_2, btn_2] if x])
+            + sum([0.25 for x in [nom_2, sam_2, cor_2, et_2] if x])
+            + p2["malus_colombe"]
+            + p2["malus_feu"]
         )
-        score1 ,score2 =max (0.0 ,score1 ),max (0.0 ,score2 )
+        score1, score2 = max(0.0, score1), max(0.0, score2)
 
         desc_calcul = t(
             langue,
@@ -1318,40 +1260,40 @@ class ProfilsCog (commands .Cog ):
             color=self.clr_compare_j,
         )
 
-        lbl_date =t (langue ,"guerre_lbl_date_data",defaut ="⏱️ **Données datées de :**")
-        embed .description =f"{lbl_date} <t:{int(actualisation_dt.timestamp())}:F> (<t:{int(actualisation_dt.timestamp())}:R>)\n\n{desc_calcul}"
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
+        embed.description = f"{lbl_date} <t:{int(actualisation_dt.timestamp())}:F> (<t:{int(actualisation_dt.timestamp())}:R>)\n\n{desc_calcul}"
 
-        def build_row (label ,v1 ,w1 ,v2 ,w2 ):
-            str1 =f"{v1} {w1}".strip ()
-            str2 =f"{v2} {w2}".strip ()
+        def build_row(label, v1, w1, v2, w2):
+            str1 = f"{v1} {w1}".strip()
+            str2 = f"{v2} {w2}".strip()
             return f"{label:<12} │ {str1:<12} │ {str2}"
 
-        p1_all ,p2_all =p1 ["alliance"][:10 ],p2 ["alliance"][:10 ]
-        p1_lvl ,p2_lvl =f"{p1['lvl']}(L.{p1['leg']})",f"{p2['lvl']}(L.{p2['leg']})"
-        p1_rnk ,p2_rnk =f"#{p1['rang']}",f"#{p2['rang']}"
+        p1_all, p2_all = p1["alliance"][:10], p2["alliance"][:10]
+        p1_lvl, p2_lvl = f"{p1['lvl']}(L.{p1['leg']})", f"{p2['lvl']}(L.{p2['leg']})"
+        p1_rnk, p2_rnk = f"#{p1['rang']}", f"#{p2['rang']}"
 
-        lbl_alli_s =t (langue ,"ev_short_alli",defaut ="Alli.")
-        lbl_pa_s =t (langue ,"ev_short_puiss_alli",defaut ="Puiss. Alli")
-        lbl_niv_s =t (langue ,"ev_short_niv",defaut ="Niv.")
-        lbl_rang_s =t (langue ,"ev_short_rang",defaut ="Rang")
-        lbl_puiss_s =t (langue ,"ev_short_puiss",defaut ="Puiss.")
-        lbl_inc_s =t (langue ,"ev_short_incendies",defaut ="Incendies")
+        lbl_alli_s = t(langue, "ev_short_alli", defaut="Alli.")
+        lbl_pa_s = t(langue, "ev_short_puiss_alli", defaut="Puiss. Alli")
+        lbl_niv_s = t(langue, "ev_short_niv", defaut="Niv.")
+        lbl_rang_s = t(langue, "ev_short_rang", defaut="Rang")
+        lbl_puiss_s = t(langue, "ev_short_puiss", defaut="Puiss.")
+        lbl_inc_s = t(langue, "ev_short_incendies", defaut="Incendies")
 
-        lbl_nomad_s =t (langue ,"ev_short_nomad",defaut ="Nomad.")
-        lbl_samou_s =t (langue ,"ev_short_samou",defaut ="Samou.")
-        lbl_corb_s =t (langue ,"ev_short_corb",defaut ="Corbeaux")
-        lbl_etr_s =t (langue ,"ev_short_etr",defaut ="Étrangers")
+        lbl_nomad_s = t(langue, "ev_short_nomad", defaut="Nomad.")
+        lbl_samou_s = t(langue, "ev_short_samou", defaut="Samou.")
+        lbl_corb_s = t(langue, "ev_short_corb", defaut="Corbeaux")
+        lbl_etr_s = t(langue, "ev_short_etr", defaut="Étrangers")
 
-        lbl_gloire_s =t (langue ,"ev_short_gloire",defaut ="Gloire")
-        lbl_pill_s =t (langue ,"ev_short_pillage",defaut ="Pillage/J")
-        lbl_col_s =t (langue ,"ev_short_colombe",defaut ="Colombe")
+        lbl_gloire_s = t(langue, "ev_short_gloire", defaut="Gloire")
+        lbl_pill_s = t(langue, "ev_short_pillage", defaut="Pillage/J")
+        lbl_col_s = t(langue, "ev_short_colombe", defaut="Colombe")
 
         lbl_f1 = t(langue, "guerre_comp_f1", defaut="{e_players} Fiche d'Identité Générale")
 
-        embed .add_field (
-        name =lbl_f1 ,
-        value =f"```\n{build_row(lbl_alli_s, p1_all, am_1, p2_all, am_2)}\n{build_row(lbl_pa_s, format_num(p1['alli_might']), '', format_num(p2['alli_might']), '')}\n{build_row(lbl_niv_s, p1_lvl, lvl_1, p2_lvl, lvl_2)}\n{build_row(lbl_rang_s, p1_rnk, rnk_1, p2_rnk, rnk_2)}\n```",
-        inline =False ,
+        embed.add_field(
+            name=lbl_f1,
+            value=f"```\n{build_row(lbl_alli_s, p1_all, am_1, p2_all, am_2)}\n{build_row(lbl_pa_s, format_num(p1['alli_might']), '', format_num(p2['alli_might']), '')}\n{build_row(lbl_niv_s, p1_lvl, lvl_1, p2_lvl, lvl_2)}\n{build_row(lbl_rang_s, p1_rnk, rnk_1, p2_rnk, rnk_2)}\n```",
+            inline=False,
         )
 
         lbl_f2 = t(langue, "guerre_comp_f2", defaut="{e_2_} Axe Militaire & Robustesse")
@@ -1375,66 +1317,83 @@ class ProfilsCog (commands .Cog ):
             inline=False,
         )
 
-        verdict =f"**{p1['nom']}** ({score1}🏆) vs **{p2['nom']}** ({score2}🏆)."
-        if p1 ["malus_colombe"]<0 or p1 ["malus_feu"]<0 or p2 ["malus_colombe"]<0 or p2 ["malus_feu"]<0 :
-            verdict +=t (
-            langue ,
-            "guerre_comp_malus",
-            defaut =" Les handicaps structurels (incendies de châteaux ou colombes d'esquive) ont lourdement grevé l'indice opérationnel.",
+        verdict = f"**{p1['nom']}** ({score1}🏆) vs **{p2['nom']}** ({score2}🏆)."
+        if p1["malus_colombe"] < 0 or p1["malus_feu"] < 0 or p2["malus_colombe"] < 0 or p2["malus_feu"] < 0:
+            verdict += t(
+                langue,
+                "guerre_comp_malus",
+                defaut=" Les handicaps structurels (incendies de châteaux ou colombes d'esquive) ont lourdement grevé l'indice opérationnel.",
             )
 
-        lbl_f5 =t (langue ,"guerre_comp_f5",defaut ="🎤 Rapport de comparaison")
-        embed .add_field (name =lbl_f5 ,value =f"> *{verdict}*",inline =False )
-        await setup_embed_footer (embed ,interaction ,langue )
+        lbl_f5 = t(langue, "guerre_comp_f5", defaut="🎤 Rapport de comparaison")
+        embed.add_field(name=lbl_f5, value=f"> *{verdict}*", inline=False)
+        await setup_embed_footer(embed, interaction, langue)
 
-        await interaction .followup .send (embed =embed )
+        await interaction.followup.send(embed=embed)
 
+    @alliance_group.command(name="profile", description="Detailed profile of an alliance (Quick and paginated)")
+    @app_commands.autocomplete(alliance_name=alliance_autocomplete)
+    async def alliance_info(self, interaction: discord.Interaction, alliance_name: str):
+        try:
+            await interaction.response.defer(thinking=True)
+        except:
+            return
 
+        langue, serveur = await get_server_config(interaction)
+        txt_unknown = t(langue, "prof_unknown", defaut="Inconnu")
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
 
+        try:
+            is_live = False
+            target_alliance_id = None
+            total_might = total_fame = total_honor = 0
+            leader_name = txt_unknown
+            members = []
+            collected_time = None
 
-    @alliance_group .command (name ="profile",description ="Detailed profile of an alliance (Quick and paginated)")
-    @app_commands .autocomplete (alliance_name =alliance_autocomplete )
-    async def alliance_info (self ,interaction :discord .Interaction ,alliance_name :str ):
-        try :
-            await interaction .response .defer (thinking =True )
-        except :
-            return 
+            try:
+                api_data = await self._get_alliance_full_data(alliance_name, interaction, langue=langue)
 
-        langue ,serveur =await get_server_config (interaction )
-        txt_unknown =t (langue ,"prof_unknown",defaut ="Inconnu")
-        lbl_date =t (langue ,"guerre_lbl_date_data",defaut ="⏱️ **Données datées de :**")
+                if api_data and "parsed_data" in api_data:
+                    is_live = True
+                    collected_time = api_data.get("collected_at")
+                    parsed = api_data["parsed_data"]
+                    target_alliance_id = parsed.get("alliance_id")
+                    alliance_name = parsed.get("name", alliance_name)
+                    leader_name = parsed.get("leader", txt_unknown)
+                    total_might = parsed.get("total_might", 0)
+                    total_honor = parsed.get("total_honor", 0)
+                    total_fame = parsed.get("total_fame", 0)
+                    members = parsed.get("members", [])
+            except Exception as e:
+                logger.warning(f"⚠️ [Profils - Alliance] API inaccessible, passage au Plan B... ({e})")
 
-        try :
-            is_live =False 
-            target_alliance_id =None 
-            total_might =total_fame =total_honor =0 
-            leader_name =txt_unknown 
-            members =[]
-            collected_time =None 
+            if not is_live:
+                player_files = list((BASE_DATA_PATH / "server_scans" / serveur).rglob("server_*.json"))
+                local_data = {}
 
-            try :
-                api_data =await self ._get_alliance_full_data (alliance_name ,interaction ,langue =langue )
+                if player_files:
+                    latest = max(player_files, key=lambda p: p.stat().st_mtime)
 
-                if api_data and "parsed_data"in api_data :
-                    is_live =True 
-                    collected_time =api_data .get ("collected_at")
-                    parsed =api_data ["parsed_data"]
-                    target_alliance_id =parsed .get ("alliance_id")
-                    alliance_name =parsed .get ("name",alliance_name )
-                    leader_name =parsed .get ("leader",txt_unknown )
-                    total_might =parsed .get ("total_might",0 )
-                    total_honor =parsed .get ("total_honor",0 )
-                    total_fame =parsed .get ("total_fame",0 )
-                    members =parsed .get ("members",[])
-            except Exception as e :
-                logger .warning (f"⚠️ [Profils - Alliance] API inaccessible, passage au Plan B... ({e})")
+                    def _load_local_json():
+                        with open(latest, encoding="utf-8") as f:
+                            return json.load(f)
 
-            if not is_live :
-                player_files =list ((BASE_DATA_PATH /"server_scans"/serveur ).rglob ("server_*.json"))
-                local_data ={}
+                    full_json = await asyncio.to_thread(_load_local_json)
+                    local_data = full_json.get("players", {})
+                    collected_time = full_json.get("collected_at")
 
-                if player_files :
-                    latest =max (player_files ,key =lambda p :p .stat ().st_mtime )
+                for p_info in local_data.values():
+                    a_obj = p_info.get("alliance")
+                    a_name = a_obj.get("name") if isinstance(a_obj, dict) else (p_info.get("alliance_name") or a_obj)
+                    if a_name and str(a_name).lower() == alliance_name.lower():
+                        aid = p_info.get("allianceId") or p_info.get("alliance_id")
+                        if not aid and isinstance(a_obj, dict):
+                            aid = a_obj.get("allianceId") or a_obj.get("alliance_id")
+                        if aid:
+                            target_alliance_id = str(aid)
+                            alliance_name = str(a_name)
+                            break
 
                 if not target_alliance_id:
                     return await interaction.followup.send(
@@ -1446,39 +1405,39 @@ class ProfilsCog (commands .Cog ):
                         )
                     )
 
-                for p_info in local_data .values ():
-                    a_obj =p_info .get ("alliance")
-                    aid =p_info .get ("allianceId")or p_info .get ("alliance_id")
-                    if not aid and isinstance (a_obj ,dict ):
-                        aid =a_obj .get ("allianceId")or a_obj .get ("alliance_id")
+                for p_info in local_data.values():
+                    a_obj = p_info.get("alliance")
+                    aid = p_info.get("allianceId") or p_info.get("alliance_id")
+                    if not aid and isinstance(a_obj, dict):
+                        aid = a_obj.get("allianceId") or a_obj.get("alliance_id")
 
-                    if str (aid )==target_alliance_id :
-                        m_rank =int (p_info .get ("alliance_rank",9 ))
-                        m_might =int (p_info .get ("main_points")or p_info .get ("might_current")or 0 )
-                        m_fame =int (p_info .get ("fame")or 0 )
-                        m_honor =int (p_info .get ("honor")or 0 )
+                    if str(aid) == target_alliance_id:
+                        m_rank = int(p_info.get("alliance_rank", 9))
+                        m_might = int(p_info.get("main_points") or p_info.get("might_current") or 0)
+                        m_fame = int(p_info.get("fame") or 0)
+                        m_honor = int(p_info.get("honor") or 0)
 
-                        total_might +=m_might 
-                        total_fame +=m_fame 
-                        total_honor +=m_honor 
+                        total_might += m_might
+                        total_fame += m_fame
+                        total_honor += m_honor
 
-                        m_name =p_info .get ("name",txt_unknown )
-                        if str (m_rank )in ["0","1"]and (leader_name ==txt_unknown or str (m_rank )=="0"):
-                            leader_name =m_name 
+                        m_name = p_info.get("name", txt_unknown)
+                        if str(m_rank) in ["0", "1"] and (leader_name == txt_unknown or str(m_rank) == "0"):
+                            leader_name = m_name
 
-                        members .append (
-                        {
-                        "name":m_name ,
-                        "level":p_info .get ("level",0 ),
-                        "leg_level":p_info .get ("legendary_level",0 ),
-                        "might":m_might ,
-                        "fame":m_fame ,
-                        "honor":m_honor ,
-                        "rank":m_rank ,
-                        }
+                        members.append(
+                            {
+                                "name": m_name,
+                                "level": p_info.get("level", 0),
+                                "leg_level": p_info.get("legendary_level", 0),
+                                "might": m_might,
+                                "fame": m_fame,
+                                "honor": m_honor,
+                                "rank": m_rank,
+                            }
                         )
 
-                members .sort (key =lambda x :(int (x .get ("rank",9 )),-x .get ("might",0 )))
+                members.sort(key=lambda x: (int(x.get("rank", 9)), -x.get("might", 0)))
 
             if not members:
                 return await interaction.followup.send(
@@ -1490,17 +1449,17 @@ class ProfilsCog (commands .Cog ):
                     )
                 )
 
-            if isinstance (collected_time ,str ):
-                try :
-                    collected_time =datetime .fromisoformat (collected_time .replace ("Z","+00:00"))
-                except :
-                    collected_time =discord .utils .utcnow ()
-            elif not collected_time :
-                collected_time =discord .utils .utcnow ()
+            if isinstance(collected_time, str):
+                try:
+                    collected_time = datetime.fromisoformat(collected_time.replace("Z", "+00:00"))
+                except:
+                    collected_time = discord.utils.utcnow()
+            elif not collected_time:
+                collected_time = discord.utils.utcnow()
 
-            ts =int (collected_time .timestamp ())
-            suffixe_cache =" *(Plan B activé)*"if not is_live else ""
-            str_date_header =f"{lbl_date} <t:{ts}:F> (<t:{ts}:R>){suffixe_cache}\n\n"
+            ts = int(collected_time.timestamp())
+            suffixe_cache = " *(Plan B activé)*" if not is_live else ""
+            str_date_header = f"{lbl_date} <t:{ts}:F> (<t:{ts}:R>){suffixe_cache}\n\n"
 
             embeds = []
             rank_emojis = {
@@ -1515,12 +1474,12 @@ class ProfilsCog (commands .Cog ):
                 8: DICT_EMOJIS.get("e_title_8", "<:8_:1512574748356251691>"),
                 9: DICT_EMOJIS.get("e_title_9", "<:9_:1512574749430120519>"),
             }
-            chunk_size =15 
-            nb_pages =max (1 ,(len (members )-1 )//chunk_size +1 )
+            chunk_size = 15
+            nb_pages = max(1, (len(members) - 1) // chunk_size + 1)
 
-            for i in range (0 ,len (members ),chunk_size ):
-                chunk =members [i :i +chunk_size ]
-                page_actuelle =(i //chunk_size )+1 
+            for i in range(0, len(members), chunk_size):
+                chunk = members[i : i + chunk_size]
+                page_actuelle = (i // chunk_size) + 1
 
                 embed_title = t(
                     langue,
@@ -1528,8 +1487,8 @@ class ProfilsCog (commands .Cog ):
                     a=alliance_name,
                     defaut="{e_alliance_icon} Alliance : {a}",
                 )
-                embed =discord .Embed (title =embed_title ,color =self .clr_alliance )
-                embed .description =str_date_header .strip ()
+                embed = discord.Embed(title=embed_title, color=self.clr_alliance)
+                embed.description = str_date_header.strip()
 
                 info_title = t(langue, "prof_info_title", defaut="{e_information} Informations")
                 info_desc = t(
@@ -1540,7 +1499,7 @@ class ProfilsCog (commands .Cog ):
                     id=target_alliance_id,
                     defaut=f"**Chef** : {leader_name}\n**Membres** : {len(members)} / 65",
                 )
-                embed .add_field (name =info_title ,value =info_desc ,inline =True )
+                embed.add_field(name=info_title, value=info_desc, inline=True)
 
                 stats_title = t(langue, "prof_alli_stats_title", defaut="{e_stats} Statistiques Globales")
                 stats_desc = t(
@@ -1551,7 +1510,7 @@ class ProfilsCog (commands .Cog ):
                     h=format_num(total_honor),
                     defaut=f"**Puiss.** : {format_num(total_might)}",
                 )
-                embed .add_field (name =memb_title ,value =memb_txt ,inline =False )
+                embed.add_field(name=stats_title, value=stats_desc, inline=True)
 
                 memb_txt = ""
                 for m in chunk:
@@ -1560,23 +1519,24 @@ class ProfilsCog (commands .Cog ):
                     emoji = rank_emojis.get(int(m.get("rank", 9)), DICT_EMOJIS.get("e_players", "👤"))
                     memb_txt += f"{emoji} **{m.get('name', txt_unknown)}** ({lvl}/{leg}) ➔ {format_num(m.get('might', 0))} | {format_num(m.get('fame', 0))}\n"
 
-            if len (embeds )==1 :
-                await interaction .followup .send (embed =embeds [0 ])
-            else :
-                view =PaginationView (embeds )
-                await interaction .followup .send (embed =embeds [0 ],view =view )
-            await prompt_vote_if_lucky (interaction ,probability_percent =8 ,langue =langue )
-
-        except Exception as e :
-            logger .error (f"❌ [Profils - Alliance] Erreur fatale : {traceback.format_exc()}")
-            try :
-                await interaction .followup .send (
-                t (langue ,"prof_alli_err_internal",defaut ="{e_error} Erreur système interne.")
+                memb_title = t(
+                    langue,
+                    "prof_alli_members_title",
+                    cur=page_actuelle,
+                    tot=nb_pages,
+                    defaut=f"Membres (Page {page_actuelle}/{nb_pages})",
                 )
-            except :
-                pass 
+                embed.add_field(name=memb_title, value=memb_txt, inline=False)
 
+                await setup_embed_footer(embed, interaction, langue)
+                embeds.append(embed)
 
+            if len(embeds) == 1:
+                await interaction.followup.send(embed=embeds[0])
+            else:
+                view = PaginationView(embeds)
+                await interaction.followup.send(embed=embeds[0], view=view)
+            await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
         except Exception as e:
             logger.error(f"❌ [Profils - Alliance] Erreur fatale : {traceback.format_exc()}")
@@ -1587,136 +1547,142 @@ class ProfilsCog (commands .Cog ):
             except:
                 pass
 
-    async def _get_alliance_full_data (
-    self ,alliance_name :str ,interaction :discord .Interaction =None ,langue :str ="fr"
+    async def _get_alliance_full_data(
+        self, alliance_name: str, interaction: discord.Interaction = None, langue: str = "fr"
     ):
-        headers =await get_api_headers (interaction )
-        serveur =headers .get ("gge-server","E4K_FR1")
-        api_url ="https://api.gge-tracker.com/api/v1"
+        headers = await get_api_headers(interaction)
+        serveur = headers.get("gge-server", "E4K_FR1")
+        api_url = "https://api.gge-tracker.com/api/v1"
 
-        safe_name =quote (str (alliance_name ))
-        search_url =f"{api_url}/alliances/name/{safe_name}"
+        safe_name = quote(str(alliance_name))
+        search_url = f"{api_url}/alliances/name/{safe_name}"
 
-        session =self .bot .session 
-        if not session :
-            return None 
+        session = self.bot.session
+        if not session:
+            return None
 
-        try :
-            async with session .get (search_url ,headers =headers ,timeout =10 )as resp :
-                if resp .status !=200 :
-                    return None 
-                data1 =await resp .json ()
-        except Exception :
-            return None 
+        try:
+            async with session.get(search_url, headers=headers, timeout=10) as resp:
+                if resp.status != 200:
+                    return None
+                data1 = await resp.json()
+        except Exception:
+            return None
 
-        target_alliance =data1 [0 ]if isinstance (data1 ,list )and data1 else data1 
-        if not target_alliance :
-            return None 
+        target_alliance = data1[0] if isinstance(data1, list) and data1 else data1
+        if not target_alliance:
+            return None
 
-        alliance_id =(
-        target_alliance .get ("alliance_id")or target_alliance .get ("id")or target_alliance .get ("allianceId")
+        alliance_id = (
+            target_alliance.get("alliance_id") or target_alliance.get("id") or target_alliance.get("allianceId")
         )
-        if not alliance_id :
-            return None 
+        if not alliance_id:
+            return None
 
-        detail_url =f"{api_url}/alliances/id/{alliance_id}"
-        stats_url =f"{api_url}/statistics/alliance/{alliance_id}"
-        pulse_url =f"{api_url}/statistics/alliance/{alliance_id}/pulse"
+        detail_url = f"{api_url}/alliances/id/{alliance_id}"
+        stats_url = f"{api_url}/statistics/alliance/{alliance_id}"
+        pulse_url = f"{api_url}/statistics/alliance/{alliance_id}/pulse"
 
-        async def fetch_json_local (url ,timeout_val ):
-            try :
-                async with session .get (url ,headers =headers ,timeout =timeout_val )as r :
-                    if r .status ==200 :
-                        return await r .json ()
-            except :
-                pass 
-            return None 
+        async def fetch_json_local(url, timeout_val):
+            try:
+                async with session.get(url, headers=headers, timeout=timeout_val) as r:
+                    if r.status == 200:
+                        return await r.json()
+            except:
+                pass
+            return None
 
-        members_data ,stats_data ,pulse_data =await asyncio .gather (
-        fetch_json_local (detail_url ,30 ),fetch_json_local (stats_url ,40 ),fetch_json_local (pulse_url ,30 )
+        members_data, stats_data, pulse_data = await asyncio.gather(
+            fetch_json_local(detail_url, 30), fetch_json_local(stats_url, 40), fetch_json_local(pulse_url, 30)
         )
 
-        if isinstance (members_data ,list )and len (members_data )>0 :
-            members_data =members_data [0 ]
-        elif not members_data :
-            members_data ={}
+        if isinstance(members_data, list) and len(members_data) > 0:
+            members_data = members_data[0]
+        elif not members_data:
+            members_data = {}
 
-        stats_data =stats_data or {}
-        pulse_data =pulse_data or {}
+        stats_data = stats_data or {}
+        pulse_data = pulse_data or {}
 
-        members =members_data .get ("players",members_data .get ("members",members_data .get ("playerList",[])))
+        members = members_data.get("players", members_data.get("members", members_data.get("playerList", [])))
 
-        parsed_members =[]
-        tot_might =tot_honor =tot_fame =0 
-        txt_unknown =t (langue ,"prof_unknown",defaut ="Inconnu")
-        leader_name =txt_unknown 
+        parsed_members = []
+        tot_might = tot_honor = tot_fame = 0
+        txt_unknown = t(langue, "prof_unknown", defaut="Inconnu")
+        leader_name = txt_unknown
 
-        for m in members :
-            rank =m .get ("allianceRank",m .get ("alliance_rank",m .get ("rank",9 )))
-            might =int (m .get ("might_current",m .get ("might",m .get ("main_points",0 ))))
-            honor =int (m .get ("honor",0 ))
-            fame =int (m .get ("current_fame",m .get ("fame",0 )))
+        for m in members:
+            rank = m.get("allianceRank", m.get("alliance_rank", m.get("rank", 9)))
+            might = int(m.get("might_current", m.get("might", m.get("main_points", 0))))
+            honor = int(m.get("honor", 0))
+            fame = int(m.get("current_fame", m.get("fame", 0)))
 
-            tot_might +=might 
-            tot_honor +=honor 
-            tot_fame +=fame 
+            tot_might += might
+            tot_honor += honor
+            tot_fame += fame
 
-            if str (rank )in ["0","1"]:
-                if leader_name ==txt_unknown or str (rank )=="0":
-                    leader_name =m .get ("player_name",m .get ("playerName",m .get ("name",txt_unknown )))
+            if str(rank) in ["0", "1"]:
+                if leader_name == txt_unknown or str(rank) == "0":
+                    leader_name = m.get("player_name", m.get("playerName", m.get("name", txt_unknown)))
 
-            parsed_members .append (
-            {
-            "name":m .get ("player_name",m .get ("playerName",m .get ("name",txt_unknown ))),
-            "might":might ,
-            "honor":honor ,
-            "fame":fame ,
-            "level":m .get ("level",0 ),
-            "leg_level":m .get ("legendary_level",m .get ("legendaryLevel",0 )),
-            "rank":rank ,
-            }
+            parsed_members.append(
+                {
+                    "name": m.get("player_name", m.get("playerName", m.get("name", txt_unknown))),
+                    "might": might,
+                    "honor": honor,
+                    "fame": fame,
+                    "level": m.get("level", 0),
+                    "leg_level": m.get("legendary_level", m.get("legendaryLevel", 0)),
+                    "rank": rank,
+                }
             )
 
-        parsed_members .sort (key =lambda x :(int (x ["rank"]),-x ["might"]))
+        parsed_members.sort(key=lambda x: (int(x["rank"]), -x["might"]))
 
-        txt_unk_alli =t (langue ,"prof_unknown_alli",defaut ="Inconnue")
-        parsed_data ={
-        "alliance_id":target_alliance .get ("alliance_id")or target_alliance .get ("allianceId"),
-        "name":target_alliance .get ("alliance_name")or target_alliance .get ("name",txt_unk_alli ),
-        "members_count":len (parsed_members ),
-        "leader":leader_name ,
-        "total_might":tot_might ,
-        "total_honor":tot_honor ,
-        "total_fame":tot_fame ,
-        "members":parsed_members ,
-        "stats_diffs":stats_data .get ("diffs",{}),
-        "stats_history":{
-        "loot":stats_data .get ("points",{}).get ("player_loot_history",[]),
-        "might":stats_data .get ("points",{}).get ("player_might_history",[]),
-        },
-        "pulse":pulse_data ,
+        txt_unk_alli = t(langue, "prof_unknown_alli", defaut="Inconnue")
+        parsed_data = {
+            "alliance_id": target_alliance.get("alliance_id") or target_alliance.get("allianceId"),
+            "name": target_alliance.get("alliance_name") or target_alliance.get("name", txt_unk_alli),
+            "members_count": len(parsed_members),
+            "leader": leader_name,
+            "total_might": tot_might,
+            "total_honor": tot_honor,
+            "total_fame": tot_fame,
+            "members": parsed_members,
+            "stats_diffs": stats_data.get("diffs", {}),
+            "stats_history": {
+                "loot": stats_data.get("points", {}).get("player_loot_history", []),
+                "might": stats_data.get("points", {}).get("player_might_history", []),
+            },
+            "pulse": pulse_data,
         }
 
-        api_timestamp =_get_api_timestamp (members_data ,stats_data ,target_alliance )
+        api_timestamp = _get_api_timestamp(members_data, stats_data, target_alliance)
 
         return {
-        "collected_at":api_timestamp ,
-        "alliance_name":parsed_data ["name"],
-        "server":serveur ,
-        "parsed_data":parsed_data ,
+            "collected_at": api_timestamp,
+            "alliance_name": parsed_data["name"],
+            "server": serveur,
+            "parsed_data": parsed_data,
         }
 
+    @alliance_group.command(name="might", description="Historical Power (PP) of an alliance over X days")
+    @app_commands.autocomplete(alliance_name=alliance_autocomplete)
+    @app_commands.describe(days="Period to analyze in days (Default: 3, Maximum: 10)")
+    async def alliance_might(self, interaction: discord.Interaction, alliance_name: str, days: int = 3):
+        try:
+            await interaction.response.defer(thinking=True)
+        except:
+            return
 
+        langue, serveur = await get_server_config(interaction)
 
+        days = max(1, min(10, days))
+        date_limite = discord.utils.utcnow() - timedelta(days=days)
 
-    @alliance_group .command (name ="might",description ="Historical Power (PP) of an alliance over X days")
-    @app_commands .autocomplete (alliance_name =alliance_autocomplete )
-    @app_commands .describe (days ="Period to analyze in days (Default: 3, Maximum: 10)")
-    async def alliance_might (self ,interaction :discord .Interaction ,alliance_name :str ,days :int =3 ):
-        try :
-            await interaction .response .defer (thinking =True )
-        except :
-            return 
+        headers = await get_api_headers(interaction)
+        safe_alliance = quote(alliance_name)
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
 
         session = self.bot.session
         if not session:
@@ -1740,18 +1706,18 @@ class ProfilsCog (commands .Cog ):
                 t(langue, "prof_pp_err_alli_nf", a=alliance_name, defaut="{e_error} Alliance introuvable.")
             )
 
-        try :
-            stats_url =f"https://api.gge-tracker.com/api/v1/statistics/alliance/{alliance_id}"
-            detail_url =f"https://api.gge-tracker.com/api/v1/alliances/id/{alliance_id}"
+        try:
+            stats_url = f"https://api.gge-tracker.com/api/v1/statistics/alliance/{alliance_id}"
+            detail_url = f"https://api.gge-tracker.com/api/v1/alliances/id/{alliance_id}"
 
-            async def fetch_json (url ):
-                try :
-                    async with session .get (url ,headers =headers ,timeout =15 )as r :
-                        if r .status ==200 :
-                            return await r .json ()
-                except :
-                    pass 
-                return None 
+            async def fetch_json(url):
+                try:
+                    async with session.get(url, headers=headers, timeout=15) as r:
+                        if r.status == 200:
+                            return await r.json()
+                except:
+                    pass
+                return None
 
             res_stats, res_detail = await asyncio.gather(fetch_json(stats_url), fetch_json(detail_url))
             if not res_stats:
@@ -1759,8 +1725,8 @@ class ProfilsCog (commands .Cog ):
                     t(langue, "prof_pp_err_dl", defaut="{e_error} Téléchargement impossible.")
                 )
 
-            stats_data =res_stats 
-            detail_data =res_detail or {}
+            stats_data = res_stats
+            detail_data = res_detail or {}
 
         except Exception:
             return await interaction.followup.send(
@@ -1773,124 +1739,133 @@ class ProfilsCog (commands .Cog ):
                 t(langue, "prof_pp_no_hist", a=alliance_name, defaut="{e_information} Aucun historique.")
             )
 
-        daily_data ={}
-        for entry in might_history :
-            d_str =entry .get ("date")
-            pid =str (entry .get ("player_id"))
-            pt =int (entry .get ("point",0 ))
-            if not d_str :
-                continue 
+        daily_data = {}
+        for entry in might_history:
+            d_str = entry.get("date")
+            pid = str(entry.get("player_id"))
+            pt = int(entry.get("point", 0))
+            if not d_str:
+                continue
 
-            try :
-                dt =datetime .fromisoformat (d_str .replace ("Z","+00:00"))
-                if dt <date_limite :
-                    continue 
-                day_str =dt .strftime ("%d/%m/%Y")
-                if day_str not in daily_data :
-                    daily_data [day_str ]={}
-                daily_data [day_str ][pid ]=max (daily_data [day_str ].get (pid ,0 ),pt )
-            except :
-                pass 
+            try:
+                dt = datetime.fromisoformat(d_str.replace("Z", "+00:00"))
+                if dt < date_limite:
+                    continue
+                day_str = dt.strftime("%d/%m/%Y")
+                if day_str not in daily_data:
+                    daily_data[day_str] = {}
+                daily_data[day_str][pid] = max(daily_data[day_str].get(pid, 0), pt)
+            except:
+                pass
 
         if not daily_data:
             return await interaction.followup.send(
                 t(langue, "prof_pp_no_data_days", a=alliance_name, j=days, defaut="{e_information} Aucune donnée.")
             )
 
-        alliance_daily_might ={}
-        for day ,players in daily_data .items ():
-            alliance_daily_might [day ]=sum (players .values ())
+        alliance_daily_might = {}
+        for day, players in daily_data.items():
+            alliance_daily_might[day] = sum(players.values())
 
-        sorted_days =sorted (alliance_daily_might .keys (),key =lambda d :datetime .strptime (d ,"%d/%m/%Y"))
+        sorted_days = sorted(alliance_daily_might.keys(), key=lambda d: datetime.strptime(d, "%d/%m/%Y"))
 
-        premier_jour =sorted_days [0 ]
-        dernier_jour =sorted_days [-1 ]
+        premier_jour = sorted_days[0]
+        dernier_jour = sorted_days[-1]
 
-        pp_debut =alliance_daily_might [premier_jour ]
-        pp_fin =alliance_daily_might [dernier_jour ]
-        variation_totale =pp_fin -pp_debut 
+        pp_debut = alliance_daily_might[premier_jour]
+        pp_fin = alliance_daily_might[dernier_jour]
+        variation_totale = pp_fin - pp_debut
 
-        pic_pp =max (alliance_daily_might .values ())
-        pire_pp =min (alliance_daily_might .values ())
+        pic_pp = max(alliance_daily_might.values())
+        pire_pp = min(alliance_daily_might.values())
 
-        def format_diff (val ):
-            if val >0 :
+        def format_diff(val):
+            if val > 0:
                 return f"+{format_num(val)}"
-            elif val <0 :
+            elif val < 0:
                 return f"{format_num(val)}"
             return "0"
 
-        stats_txt =t (
-        langue ,
-        "prof_pp_bilan_desc",
-        p =premier_jour ,
-        d =dernier_jour ,
-        p_d =format_num (pp_debut ),
-        p_f =format_num (pp_fin ),
-        v =format_diff (variation_totale ),
-        pic =format_num (pic_pp ),
-        pire =format_num (pire_pp ),
-        defaut =f"\n\n**Période** : du {premier_jour} au {dernier_jour}",
+        stats_txt = t(
+            langue,
+            "prof_pp_bilan_desc",
+            p=premier_jour,
+            d=dernier_jour,
+            p_d=format_num(pp_debut),
+            p_f=format_num(pp_fin),
+            v=format_diff(variation_totale),
+            pic=format_num(pic_pp),
+            pire=format_num(pire_pp),
+            defaut=f"\n\n**Période** : du {premier_jour} au {dernier_jour}",
         )
 
-        lignes_historique =[]
-        for day in reversed (sorted_days ):
-            pp_jour =alliance_daily_might [day ]
-            index_jour =sorted_days .index (day )
-            if index_jour >0 :
-                pp_hier =alliance_daily_might [sorted_days [index_jour -1 ]]
-                diff_jour =pp_jour -pp_hier 
-                diff_txt =f"({format_diff(diff_jour)})"
-            else :
-                diff_txt =t (langue ,"prof_pp_start_point",defaut ="(Point de départ)")
+        lignes_historique = []
+        for day in reversed(sorted_days):
+            pp_jour = alliance_daily_might[day]
+            index_jour = sorted_days.index(day)
+            if index_jour > 0:
+                pp_hier = alliance_daily_might[sorted_days[index_jour - 1]]
+                diff_jour = pp_jour - pp_hier
+                diff_txt = f"({format_diff(diff_jour)})"
+            else:
+                diff_txt = t(langue, "prof_pp_start_point", defaut="(Point de départ)")
 
-            lignes_historique .append (f"• **{day}** ➔ **{format_num(pp_jour)} PP** {diff_txt}")
+            lignes_historique.append(f"• **{day}** ➔ **{format_num(pp_jour)} PP** {diff_txt}")
 
-        embeds =[]
-        chunk_size =15 
-        nb_pages =max (1 ,(len (lignes_historique )-1 )//chunk_size +1 )
-        alliance_name_real =target .get ("alliance_name")or target .get ("name",alliance_name )
+        embeds = []
+        chunk_size = 15
+        nb_pages = max(1, (len(lignes_historique) - 1) // chunk_size + 1)
+        alliance_name_real = target.get("alliance_name") or target.get("name", alliance_name)
 
-        api_timestamp =_get_api_timestamp (detail_data ,target ,stats_data )
-        ts_act =int (api_timestamp .timestamp ())
-        str_date_header =f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
+        api_timestamp = _get_api_timestamp(detail_data, target, stats_data)
+        ts_act = int(api_timestamp.timestamp())
+        str_date_header = f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
 
-        for i in range (0 ,len (lignes_historique ),chunk_size ):
-            chunk =lignes_historique [i :i +chunk_size ]
-            page_actuelle =(i //chunk_size )+1 
+        for i in range(0, len(lignes_historique), chunk_size):
+            chunk = lignes_historique[i : i + chunk_size]
+            page_actuelle = (i // chunk_size) + 1
 
-            embed =discord .Embed (
-            title =t (
-            langue ,
-            "prof_pp_embed_title",
-            a =alliance_name_real ,
-            defaut =f"Évolution de la Puissance pour : {alliance_name_real}",
-            ),
-            color =self .clr_alliance_pp ,
+            embed = discord.Embed(
+                title=t(
+                    langue,
+                    "prof_pp_embed_title",
+                    a=alliance_name_real,
+                    defaut=f"Évolution de la Puissance pour : {alliance_name_real}",
+                ),
+                color=self.clr_alliance_pp,
             )
-            embed_desc_i18n =t (
-            langue ,"prof_pp_embed_desc",j =days ,defaut =f"Analyse sur les **{days} derniers jours**."
+            embed_desc_i18n = t(
+                langue, "prof_pp_embed_desc", j=days, defaut=f"Analyse sur les **{days} derniers jours**."
             )
-            embed .description =str_date_header +embed_desc_i18n 
+            embed.description = str_date_header + embed_desc_i18n
 
-            embed .add_field (name =t (langue ,"prof_pp_bilan_title",defaut ="Bilan Global"),value =stats_txt ,inline =False )
-            embed .add_field (
-            name =t (langue ,"prof_pp_daily_title",cur =page_actuelle ,tot =nb_pages ,defaut ="Historique Quotidien"),
-            value ="\n".join (chunk ),
-            inline =False ,
+            embed.add_field(name=t(langue, "prof_pp_bilan_title", defaut="Bilan Global"), value=stats_txt, inline=False)
+            embed.add_field(
+                name=t(langue, "prof_pp_daily_title", cur=page_actuelle, tot=nb_pages, defaut="Historique Quotidien"),
+                value="\n".join(chunk),
+                inline=False,
             )
 
-            await setup_embed_footer (embed ,interaction ,langue )
-            embeds .append (embed )
+            await setup_embed_footer(embed, interaction, langue)
+            embeds.append(embed)
 
-        if len (embeds )==1 :
-            await interaction .followup .send (embed =embeds [0 ])
-        else :
-            view =PaginationView (embeds )
-            await interaction .followup .send (embed =embeds [0 ],view =view )
-        await prompt_vote_if_lucky (interaction ,probability_percent =5 ,langue =langue )
+        if len(embeds) == 1:
+            await interaction.followup.send(embed=embeds[0])
+        else:
+            view = PaginationView(embeds)
+            await interaction.followup.send(embed=embeds[0], view=view)
+        await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
+    @alliance_group.command(name="property", description="Displays all properties of an alliance")
+    @app_commands.describe(alliance_name="Alliance name")
+    @app_commands.autocomplete(alliance_name=alliance_autocomplete)
+    async def alliance_property(self, interaction: discord.Interaction, alliance_name: str):
+        await interaction.response.defer(thinking=True)
+        langue, serveur = await get_server_config(interaction)
+        headers = await get_api_headers(interaction)
 
+        safe_alliance = quote(alliance_name)
+        url_search = f"https://api.gge-tracker.com/api/v1/alliances/name/{safe_alliance}"
 
         async with self.bot.session.get(url_search, headers=headers, timeout=10) as r:
             if r.status != 200:
@@ -1913,9 +1888,9 @@ class ProfilsCog (commands .Cog ):
                     )
                 )
 
-            target =data [0 ]if isinstance (data ,list )else data 
-            alliance_id =target .get ("alliance_id")or target .get ("id")
-            nom_officiel =target .get ("alliance_name",alliance_name )
+            target = data[0] if isinstance(data, list) else data
+            alliance_id = target.get("alliance_id") or target.get("id")
+            nom_officiel = target.get("alliance_name", alliance_name)
 
         if not alliance_id:
             return await interaction.followup.send(
@@ -1927,7 +1902,6 @@ class ProfilsCog (commands .Cog ):
                 )
             )
 
-        # --- 2. RÉCUPÉRATION DE LA CARTOGRAPHIE ---
         url_carto = f"https://api.gge-tracker.com/api/v1/cartography/id/{alliance_id}"
         async with self.bot.session.get(url_carto, headers=headers, timeout=15) as r:
             if r.status != 200:
@@ -1940,28 +1914,15 @@ class ProfilsCog (commands .Cog ):
                 )
             carto_data = await r.json()
 
-        url_carto =f"https://api.gge-tracker.com/api/v1/cartography/id/{alliance_id}"
-        async with self .bot .session .get (url_carto ,headers =headers ,timeout =15 )as r :
-            if r .status !=200 :
-                return await interaction .followup .send (
-                t (
-                langue ,
-                "cmd_prop_api_err",
-                defaut ="{e_error} Erreur lors de la récupération des données cartographiques.",
+        if not carto_data:
+            return await interaction.followup.send(
+                t(
+                    langue,
+                    "cmd_prop_empty",
+                    defaut=f"📭 L'alliance **{alliance_name}** ne possède aucune propriété spéciale.",
                 )
-                )
-            carto_data =await r .json ()
-
-        if not carto_data :
-            return await interaction .followup .send (
-            t (
-            langue ,
-            "cmd_prop_empty",
-            defaut =f"📭 L'alliance **{alliance_name}** ne possède aucune propriété spéciale.",
-            )
             )
 
-        # --- 3. CONFIGURATION DES DONNÉES ---
         PROP_TYPES = {
             3: {
                 "name": t(langue, "prop_capital", defaut="Capitale"),
@@ -1993,8 +1954,10 @@ class ProfilsCog (commands .Cog ):
             4: DICT_EMOJIS.get("e_dungeon4", "<:dungeon4:1512573845737963722>"),
         }
 
-        all_props =[]
+        all_props = []
 
+        for player in carto_data:
+            p_name = player.get("name", "Inconnu")
 
             for c in player.get("castles", []):
                 if len(c) >= 3 and int(c[2]) in PROP_TYPES:
@@ -2006,16 +1969,18 @@ class ProfilsCog (commands .Cog ):
                         {"type": int(cr[3]), "x": cr[1], "y": cr[2], "player": p_name, "world_id": int(cr[0])}
                     )
 
-        if len (all_props )==0 :
-            msg_empty =t (
-            langue ,
-            "cmd_prop_none",
-            defaut =f"📭 L'alliance **{nom_officiel}** ne possède aucune propriété spéciale (Capitale, Tour du Roi, Monument, Labo).",
+        if len(all_props) == 0:
+            msg_empty = t(
+                langue,
+                "cmd_prop_none",
+                defaut=f"📭 L'alliance **{nom_officiel}** ne possède aucune propriété spéciale (Capitale, Tour du Roi, Monument, Labo).",
             )
-            return await interaction .followup .send (msg_empty )
+            return await interaction.followup.send(msg_empty)
 
         all_props.sort(key=lambda p: (p["type"], p["world_id"], p["player"].lower()))
 
+        embeds = []
+        titre_base = t(langue, "cmd_prop_embed_title", alliance=nom_officiel, defaut=f"🏰 Propriétés de {nom_officiel}")
 
         header_desc = t(
             langue,
@@ -2023,39 +1988,47 @@ class ProfilsCog (commands .Cog ):
             defaut="{e_information} **Monde | Type | Joueur ➔ Coordonnées**\n\n",
         )
 
-        current_embed =discord .Embed (title =titre_base ,color =self .clr_alliance_property )
-        current_desc =header_desc 
+        current_embed = discord.Embed(title=titre_base, color=self.clr_alliance_property)
+        current_desc = header_desc
 
-        for p in all_props :
-            info =PROP_TYPES [p ["type"]]
-            r_emoji =REALM_EMOJIS .get (p ["world_id"],"🗺️")
+        for p in all_props:
+            info = PROP_TYPES[p["type"]]
+            r_emoji = REALM_EMOJIS.get(p["world_id"], "🗺️")
 
-            ligne =f"{r_emoji} [{info['emoji']}] **{p['player']}** ➔ `{p['x']}:{p['y']}`\n"
+            ligne = f"{r_emoji} [{info['emoji']}] **{p['player']}** ➔ `{p['x']}:{p['y']}`\n"
 
-            if len (current_desc )+len (ligne )>4000 :
-                current_embed .description =current_desc 
-                embeds .append (current_embed )
+            if len(current_desc) + len(ligne) > 4000:
+                current_embed.description = current_desc
+                embeds.append(current_embed)
 
-                current_embed =discord .Embed (title =f"{titre_base} (Suite)",color =discord .Color .from_rgb (255 ,215 ,0 ))
-                current_desc =header_desc +ligne 
-            else :
-                current_desc +=ligne 
+                current_embed = discord.Embed(title=f"{titre_base} (Suite)", color=discord.Color.from_rgb(255, 215, 0))
+                current_desc = header_desc + ligne
+            else:
+                current_desc += ligne
 
-        if current_desc and current_desc !=header_desc :
-            current_embed .description =current_desc 
-            embeds .append (current_embed )
+        if current_desc and current_desc != header_desc:
+            current_embed.description = current_desc
+            embeds.append(current_embed)
 
         for emb in embeds:
             await setup_embed_footer(emb, interaction, langue)
 
-        if len (embeds )>1 :
-            view =PaginationView (embeds )
-            await interaction .followup .send (embed =embeds [0 ],view =view )
-        else :
-            await interaction .followup .send (embed =embeds [0 ])
-        await prompt_vote_if_lucky (interaction ,probability_percent =5 ,langue =langue )
+        if len(embeds) > 1:
+            view = PaginationView(embeds)
+            await interaction.followup.send(embed=embeds[0], view=view)
+        else:
+            await interaction.followup.send(embed=embeds[0])
+        await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
+    @alliance_group.command(name="description", description="View the history of the last wall changes")
+    @app_commands.autocomplete(alliance_name=alliance_autocomplete)
+    async def alliance_description(self, interaction: discord.Interaction, alliance_name: str):
+        try:
+            await interaction.response.defer(thinking=True)
+        except:
+            return
 
+        langue, serveur = await get_server_config(interaction)
 
         headers = await get_api_headers(interaction)
         session = self.bot.session
@@ -2064,46 +2037,50 @@ class ProfilsCog (commands .Cog ):
                 t(langue, "prof_desc_err_tech", defaut="{e_error} Erreur système (Session fermée).")
             )
 
-        from urllib .parse import quote 
+        from urllib.parse import quote
 
-        safe_alliance =quote (str (alliance_name ))
-        alliance_id =None 
+        safe_alliance = quote(str(alliance_name))
+        alliance_id = None
 
+        try:
+            search_url = f"https://api.gge-tracker.com/api/v1/alliances/name/{safe_alliance}"
+            async with session.get(search_url, headers=headers, timeout=10) as resp:
+                if resp.status == 200:
+                    data1 = await resp.json()
+                    target = data1[0] if isinstance(data1, list) and data1 else data1
+                    if target:
+                        alliance_id = target.get("alliance_id") or target.get("id") or target.get("allianceId")
+        except Exception as e:
+            self.logger.warning(f"⚠️ [Description Alliance] API /name/ injoignable pour {alliance_name} : {e}")
 
-        # --- 2. RECHERCHE DE L'ID (PLAN B : SCAN LOCAL) ---
         if not alliance_id:
             try:
                 from utils import BASE_DATA_PATH
 
+                player_files = list((BASE_DATA_PATH / "server_scans" / serveur).rglob("server_*.json"))
+                if player_files:
+                    latest = max(player_files, key=lambda p: p.stat().st_mtime)
 
-        if not alliance_id :
-            try :
-                from utils import BASE_DATA_PATH 
+                    def _load_local_json():
+                        with open(latest, encoding="utf-8") as f:
+                            return json.load(f).get("players", {})
 
-                player_files =list ((BASE_DATA_PATH /"server_scans"/serveur ).rglob ("server_*.json"))
-                if player_files :
-                    latest =max (player_files ,key =lambda p :p .stat ().st_mtime )
+                    local_data = await asyncio.to_thread(_load_local_json)
 
-                    def _load_local_json ():
-                        with open (latest ,encoding ="utf-8")as f :
-                            return json .load (f ).get ("players",{})
-
-                    local_data =await asyncio .to_thread (_load_local_json )
-
-                    for p_info in local_data .values ():
-                        a_obj =p_info .get ("alliance")
-                        a_name =(
-                        a_obj .get ("name")if isinstance (a_obj ,dict )else (p_info .get ("alliance_name")or a_obj )
+                    for p_info in local_data.values():
+                        a_obj = p_info.get("alliance")
+                        a_name = (
+                            a_obj.get("name") if isinstance(a_obj, dict) else (p_info.get("alliance_name") or a_obj)
                         )
-                        if a_name and str (a_name ).lower ()==alliance_name .lower ():
-                            aid =p_info .get ("allianceId")or p_info .get ("alliance_id")
-                            if not aid and isinstance (a_obj ,dict ):
-                                aid =a_obj .get ("allianceId")or a_obj .get ("alliance_id")
-                            if aid :
-                                alliance_id =str (aid )
-                                break 
-            except Exception as e :
-                self .logger .error (f"❌ [Description Alliance] Erreur Plan B (Scan local) pour {alliance_name} : {e}")
+                        if a_name and str(a_name).lower() == alliance_name.lower():
+                            aid = p_info.get("allianceId") or p_info.get("alliance_id")
+                            if not aid and isinstance(a_obj, dict):
+                                aid = a_obj.get("allianceId") or a_obj.get("alliance_id")
+                            if aid:
+                                alliance_id = str(aid)
+                                break
+            except Exception as e:
+                self.logger.error(f"❌ [Description Alliance] Erreur Plan B (Scan local) pour {alliance_name} : {e}")
 
         if not alliance_id:
             msg = t(
@@ -2112,8 +2089,9 @@ class ProfilsCog (commands .Cog ):
                 a=alliance_name,
                 defaut=f"{{e_error}} Impossible de trouver l'ID de l'alliance **{alliance_name}**.",
             )
-            return await interaction .followup .send (msg )
+            return await interaction.followup.send(msg)
 
+        api_url = f"https://api.gge-tracker.com/api/v1/alliances/id/{alliance_id}"
 
         try:
             async with session.get(api_url, headers=headers, timeout=10) as response:
@@ -2135,6 +2113,9 @@ class ProfilsCog (commands .Cog ):
                 t(langue, "prof_desc_err_tech", defaut="{e_error} Erreur technique lors de la connexion à l'API.")
             )
 
+        nom_alliance = data.get("alliance_name", alliance_name)
+        desc_actuelle = data.get("description")
+        historique = data.get("description_history") or []
 
         if not desc_actuelle and not historique:
             msg_unsupported = t(
@@ -2143,12 +2124,12 @@ class ProfilsCog (commands .Cog ):
                 srv=serveur,
                 defaut=f"{{e_warning}} Cette commande ne fonctionne pas encore sur le serveur demandé (**{serveur}**), ou le mur est totalement vide.",
             )
-            return await interaction .followup .send (msg_unsupported )
+            return await interaction.followup.send(msg_unsupported)
 
-        def clean_desc (text ):
-            if not text :
+        def clean_desc(text):
+            if not text:
                 return "*(Mur vide ou non renseigné)*"
-            return text .replace ("<br />","\n").replace ("<br/>","\n").replace ("<br>","\n").strip ()
+            return text.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n").strip()
 
         dates_trouvees = []
         if data.get("updated_at"):
@@ -2159,22 +2140,21 @@ class ProfilsCog (commands .Cog ):
             if entry.get("created_at"):
                 dates_trouvees.append(entry.get("created_at"))
 
-        from datetime import datetime 
+        from datetime import datetime
 
-        if dates_trouvees :
-            latest_str =max (dates_trouvees )
-            if latest_str .endswith ("Z"):
-                latest_str =latest_str [:-1 ]+"+00:00"
-            try :
-                actualisation_dt =datetime .fromisoformat (latest_str )
-            except :
-                actualisation_dt =discord .utils .utcnow ()
-        else :
-            actualisation_dt =discord .utils .utcnow ()
+        if dates_trouvees:
+            latest_str = max(dates_trouvees)
+            if latest_str.endswith("Z"):
+                latest_str = latest_str[:-1] + "+00:00"
+            try:
+                actualisation_dt = datetime.fromisoformat(latest_str)
+            except:
+                actualisation_dt = discord.utils.utcnow()
+        else:
+            actualisation_dt = discord.utils.utcnow()
 
-        ts_act =int (actualisation_dt .timestamp ())
+        ts_act = int(actualisation_dt.timestamp())
 
-        # --- 5. PRÉPARATION DES BLOCS DE TEXTE ---
         murs_blocks = []
 
         murs_blocks.append(
@@ -2193,37 +2173,36 @@ class ProfilsCog (commands .Cog ):
                         date_brute = date_brute[:-1] + "+00:00"
                     ts_change = int(datetime.fromisoformat(date_brute).timestamp())
 
-                    header_title =t (
-                    langue ,
-                    "prof_desc_version_api",
-                    ts =ts_change ,
-                    defaut =f"🕰️ Ancienne version (Remplacée le <t:{ts_change}:d> à <t:{ts_change}:t>)",
+                    header_title = t(
+                        langue,
+                        "prof_desc_version_api",
+                        ts=ts_change,
+                        defaut=f"🕰️ Ancienne version (Remplacée le <t:{ts_change}:d> à <t:{ts_change}:t>)",
                     )
-                    texte_affiche =clean_desc (entry .get ("old_description",""))
-                    murs_blocks .append ({"name":header_title ,"value":texte_affiche })
-                except Exception as e :
-                    self .logger .warning (f"⚠️ Erreur de parsing date historique pour {nom_alliance} : {e}")
-                    continue 
+                    texte_affiche = clean_desc(entry.get("old_description", ""))
+                    murs_blocks.append({"name": header_title, "value": texte_affiche})
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Erreur de parsing date historique pour {nom_alliance} : {e}")
+                    continue
 
-
-        lbl_date =t (langue ,"guerre_lbl_date_data",defaut ="⏱️ **Données datées de :**")
-        str_date_header =f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
-        desc_i18n =t (
-        langue ,
-        "prof_desc_embed_desc",
-        l =len (murs_blocks ),
-        defaut ="Analyse du mur d'alliance depuis le GGE Tracker.",
+        lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
+        str_date_header = f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
+        desc_i18n = t(
+            langue,
+            "prof_desc_embed_desc",
+            l=len(murs_blocks),
+            defaut="Analyse du mur d'alliance depuis le GGE Tracker.",
         )
 
-        embed_title =t (
-        langue ,
-        "prof_desc_embed_title",
-        a =nom_alliance .upper (),
-        defaut =f"Archives Alliance : {nom_alliance.upper()}",
+        embed_title = t(
+            langue,
+            "prof_desc_embed_title",
+            a=nom_alliance.upper(),
+            defaut=f"Archives Alliance : {nom_alliance.upper()}",
         )
 
-        embeds =[]
-        chunks =[murs_blocks [i :i +3 ]for i in range (0 ,len (murs_blocks ),3 )]
+        embeds = []
+        chunks = [murs_blocks[i : i + 3] for i in range(0, len(murs_blocks), 3)]
 
         for i, chunk in enumerate(chunks):
             embed = discord.Embed(
@@ -2237,11 +2216,11 @@ class ProfilsCog (commands .Cog ):
                 if len(valeur_champ) > 1020:
                     valeur_champ = valeur_champ[:1017] + "..."
 
-                embed .add_field (name =block ["name"],value =valeur_champ ,inline =False )
+                embed.add_field(name=block["name"], value=valeur_champ, inline=False)
 
-            embed .set_footer (text =f"Page {i + 1}/{len(chunks)}")
-            await setup_embed_footer (embed ,interaction ,langue )
-            embeds .append (embed )
+            embed.set_footer(text=f"Page {i + 1}/{len(chunks)}")
+            await setup_embed_footer(embed, interaction, langue)
+            embeds.append(embed)
 
         if len(embeds) == 1:
             await interaction.followup.send(embed=embeds[0])
@@ -2249,21 +2228,33 @@ class ProfilsCog (commands .Cog ):
             view = PaginationView(embeds)
             await interaction.followup.send(embed=embeds[0], view=view)
 
+    @alliance_group.command(name="scanner", description="Analyze the enemy roster in real time (Doves, PP, Targets)")
+    @app_commands.autocomplete(alliance_name=alliance_autocomplete)
+    async def alliance_scanner(self, interaction: discord.Interaction, alliance_name: str):
+        try:
+            await interaction.response.defer(thinking=True)
+        except:
+            return
 
+        langue, serveur = await get_server_config(interaction)
 
+        cache_data = await get_cached_data(serveur)
+        local_data = cache_data.get("players_data", {})
 
-    @alliance_group .command (name ="scanner",description ="Analyze the enemy roster in real time (Doves, PP, Targets)")
-    @app_commands .autocomplete (alliance_name =alliance_autocomplete )
-    async def alliance_scanner (self ,interaction :discord .Interaction ,alliance_name :str ):
-        try :
-            await interaction .response .defer (thinking =True )
-        except :
-            return 
+        target_id = None
+        for p_info in local_data.values():
+            a_obj = p_info.get("alliance")
+            a_name = a_obj.get("name") if isinstance(a_obj, dict) else (p_info.get("alliance_name") or a_obj)
 
-        langue ,serveur =await get_server_config (interaction )
+            if a_name and str(a_name).lower() == alliance_name.lower():
+                aid = p_info.get("allianceId") or p_info.get("alliance_id")
+                if not aid and isinstance(a_obj, dict):
+                    aid = a_obj.get("allianceId") or a_obj.get("alliance_id")
 
-        cache_data =await get_cached_data (serveur )
-        local_data =cache_data .get ("players_data",{})
+                if aid:
+                    target_id = str(aid)
+                    alliance_name = str(a_name)
+                    break
 
         if not target_id:
             return await interaction.followup.send(
@@ -2275,8 +2266,8 @@ class ProfilsCog (commands .Cog ):
                 )
             )
 
-        headers =await get_api_headers (custom_server =serveur )
-        url =f"https://api.gge-tracker.com/api/v1/alliances/id/{target_id}"
+        headers = await get_api_headers(custom_server=serveur)
+        url = f"https://api.gge-tracker.com/api/v1/alliances/id/{target_id}"
 
         try:
             async with self.bot.session.get(url, headers=headers, timeout=10) as r:
@@ -2311,34 +2302,34 @@ class ProfilsCog (commands .Cog ):
                 )
             )
 
-        maintenant =discord .utils .utcnow ()
-        actualisation_dt =_get_api_timestamp (data )
-        colombes ,cibles_libres =[],[]
-        txt_unk =t (langue ,"prof_unknown",defaut ="Inconnu")
+        maintenant = discord.utils.utcnow()
+        actualisation_dt = _get_api_timestamp(data)
+        colombes, cibles_libres = [], []
+        txt_unk = t(langue, "prof_unknown", defaut="Inconnu")
 
-        for m in members :
-            name =m .get ("player_name",m .get ("playerName",m .get ("name",txt_unk )))
-            pp =int (m .get ("might_current",m .get ("might",m .get ("main_points",0 ))))
-            peace =m .get ("peace_disabled_at")
+        for m in members:
+            name = m.get("player_name", m.get("playerName", m.get("name", txt_unk)))
+            pp = int(m.get("might_current", m.get("might", m.get("main_points", 0))))
+            peace = m.get("peace_disabled_at")
 
-            is_protected =False 
-            if peace and peace !="null":
-                try :
-                    dt_peace =datetime .fromisoformat (peace .replace ("Z","+00:00"))
-                    if dt_peace >maintenant :
-                        is_protected =True 
-                        colombes .append ({"name":name ,"pp":pp ,"fin":int (dt_peace .timestamp ())})
-                except :
-                    pass 
+            is_protected = False
+            if peace and peace != "null":
+                try:
+                    dt_peace = datetime.fromisoformat(peace.replace("Z", "+00:00"))
+                    if dt_peace > maintenant:
+                        is_protected = True
+                        colombes.append({"name": name, "pp": pp, "fin": int(dt_peace.timestamp())})
+                except:
+                    pass
 
-            if not is_protected :
-                cibles_libres .append ({"name":name ,"pp":pp })
+            if not is_protected:
+                cibles_libres.append({"name": name, "pp": pp})
 
-        cibles_libres .sort (key =lambda x :x ["pp"],reverse =True )
-        colombes .sort (key =lambda x :x ["fin"])
+        cibles_libres.sort(key=lambda x: x["pp"], reverse=True)
+        colombes.sort(key=lambda x: x["fin"])
 
-        embeds =[]
-        chunk_size =10 
+        embeds = []
+        chunk_size = 10
 
         e_peace_ic = DICT_EMOJIS.get("e_peace", "🕊️")
         e_atk_ic = DICT_EMOJIS.get("e_attaque", "⚔️")
@@ -2369,11 +2360,11 @@ class ProfilsCog (commands .Cog ):
                 defaut=f"{{e_players}} **Membres Actifs :** {len(members)}\n{{e_peace}} **Sous protection :** {len(colombes)}\n{{e_attaque}} **Cibles vulnérables :** {len(cibles_libres)}\n\n**{titre_page}**",
             )
 
-            lbl_date =t (langue ,"guerre_lbl_date_data",defaut ="⏱️ **Données datées de :**")
-            embed .description =f"{lbl_date} <t:{int(actualisation_dt.timestamp())}:F> (<t:{int(actualisation_dt.timestamp())}:R>)\n\n{desc_i18n}"
+            lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
+            embed.description = f"{lbl_date} <t:{int(actualisation_dt.timestamp())}:F> (<t:{int(actualisation_dt.timestamp())}:R>)\n\n{desc_i18n}"
 
-            await setup_embed_footer (embed ,interaction ,langue )
-            return embed 
+            await setup_embed_footer(embed, interaction, langue)
+            return embed
 
         if lignes_colombes:
             nb_pages_col = max(1, (len(lignes_colombes) - 1) // chunk_size + 1)
@@ -2389,13 +2380,12 @@ class ProfilsCog (commands .Cog ):
                         defaut=f"{{e_icon_peace}} Colombes (Page {num_page}/{nb_pages_col})",
                     )
                 )
+                embed.add_field(
+                    name=t(langue, "guerre_scan_field_col", defaut="Prochaines à tomber"),
+                    value="\n".join(chunk),
+                    inline=False,
                 )
-                embed .add_field (
-                name =t (langue ,"guerre_scan_field_col",defaut ="Prochaines à tomber"),
-                value ="\n".join (chunk ),
-                inline =False ,
-                )
-                embeds .append (embed )
+                embeds.append(embed)
 
         if lignes_cibles:
             nb_pages_cib = max(1, (len(lignes_cibles) - 1) // chunk_size + 1)
@@ -2411,13 +2401,12 @@ class ProfilsCog (commands .Cog ):
                         defaut=f"{{e_castle1}} Cibles Libres (Page {num_page}/{nb_pages_cib})",
                     )
                 )
+                embed.add_field(
+                    name=t(langue, "guerre_scan_field_cib", defaut="Cibles triées par Puissance"),
+                    value="\n".join(chunk),
+                    inline=False,
                 )
-                embed .add_field (
-                name =t (langue ,"guerre_scan_field_cib",defaut ="Cibles triées par Puissance"),
-                value ="\n".join (chunk ),
-                inline =False ,
-                )
-                embeds .append (embed )
+                embeds.append(embed)
 
         if not embeds:
             return await interaction.followup.send(
@@ -2428,13 +2417,13 @@ class ProfilsCog (commands .Cog ):
                 )
             )
 
-        if len (embeds )==1 :
-            await interaction .followup .send (embed =embeds [0 ])
-        else :
-            view =PaginationView (embeds )
-            await interaction .followup .send (embed =embeds [0 ],view =view )
-        await prompt_vote_if_lucky (interaction ,probability_percent =8 ,langue =langue )
+        if len(embeds) == 1:
+            await interaction.followup.send(embed=embeds[0])
+        else:
+            view = PaginationView(embeds)
+            await interaction.followup.send(embed=embeds[0], view=view)
+        await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
 
-async def setup (bot :commands .Bot ):
-    await bot .add_cog (ProfilsCog (bot ))
+async def setup(bot: commands.Bot):
+    await bot.add_cog(ProfilsCog(bot))
