@@ -35,6 +35,7 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 ```bash
 .
 ├── Dockerfile
+├── LICENSE
 ├── README.md
 ├── assets
 │   └── logo.webp
