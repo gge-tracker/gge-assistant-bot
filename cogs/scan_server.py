@@ -190,7 +190,7 @@ class ScanCog(commands.Cog):
         # ==========================================
         try:
             date_dirs = sorted([d for d in server_dir.iterdir() if d.is_dir()])
-            
+
             if len(date_dirs) > 3:
                 dirs_to_remove = date_dirs[:-3]
                 for d in dirs_to_remove:
