@@ -4,13 +4,15 @@
 
 <p align="center">
     <img alt="Python Version" src="https://img.shields.io/badge/python-3.11-blue.svg"/>
+    <img alt="Node.js" src="https://img.shields.io/badge/node.js-bridge-success.svg?logo=node.js"/>
     <img alt="Discord.py" src="https://img.shields.io/badge/discord.py-%3E%3D2.4.0-blue.svg"/>
     <img alt="Docker" src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker"/>
     <img alt="Top.gg" src="https://img.shields.io/badge/Top.gg-Webhook-ff3366.svg"/>
+    <img alt="GGE Tracker API" src="https://img.shields.io/badge/GGE--Tracker-API-4caf50.svg"/>
 </p>
 
 <p align="center">
-A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empire: Four Kingdoms" (E4K) players. It provides server tracking, fortress radars, event management, and automated alerts.
+A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empire: Four Kingdoms" (E4K) players. It provides server tracking, fortress radars, event management, and automated alerts by leveraging direct game connections and the GGE-Tracker API.
 </p>
 
 ---
@@ -19,10 +21,12 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 
 | Component | Stack | Role |
 |---|---|---|
-| **Bot Core** | `discord.py` | The main application handling commands, events, and background tasks (such as status rotation and server XML synchronization). |
+| **Bot Core** | `discord.py` | The main application handling commands, events, and background tasks (such as status rotation and radar scanning). |
+| **Empire-API Bridge** | `Node.js` | Local REST <=> WebSocket bridge (fork of `danadum/empire-api`) holding persistent connections to the game servers. |
 | **Webhook Server** | `aiohttp.web` | Listens for Top.gg upvotes on port 5011 (mapped to 60001) to automatically grant users a 7-day ad-free shield. |
 | **Data Storage** | `JSON` | Local flat-file storage for player data, server configurations, and historical server scans. |
-| **Hosting** | `Docker` | Containerized environment running on Python 3.11-slim, optimized for 24/7 deployment. |
+| **GGE-Tracker API** | `REST` | External backend API utilized to fetch server map dumps, player metrics, and alliance statistics. |
+| **Hosting** | `Docker` | Containerized environment running Python and Node.js, optimized for 24/7 deployment. |
 
 ## 📂 Project Structure
 
@@ -69,6 +73,7 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 *(This section can be auto-updated via GitHub Actions)*
 
 The project follows a modular architecture:
+* **`empire-api/`**: Node.js REST API serving as a bridge to the game's WebSockets.
 * **`cogs/`**: Contains all feature modules including `forteresses.py`, `radar.py`, `storms.py`, `events.py`, and `classement.py`.
 * **`data/`**: The main data store holding `configs/`, `joueurs/` (player tracking, votes), and `server_scans/` (daily dumps for dozens of servers like FR1, DE1, US1, and WORLD1).
 * **`locales/`**: Internationalization files supporting French (`fr.json`), English (`en.json`), and German (`de.json`).
@@ -98,11 +103,13 @@ graph TD
     %% ==== EXTERNAL SOURCES ====
     discord_api[🌐 Discord API]
     topgg_api[🌐 Top.gg API]
-    gge_tracker[🌐 GGE-Tracker XML]
+    gge_tracker[🌐 GGE-Tracker REST API]
+    gge_servers[🎮 GGE Game Servers]
 
     %% ==== NAS HOSTING ====
     subgraph nas[NAS Docker Environment]
         bot[🤖 GGE Assistant Core<br>discord.py]
+        empire_api[🌉 Empire-API Bridge<br>Node.js]
         webhook[🔌 aiohttp Webhook<br>Port 5011 -> 60001]
         
         subgraph storage[Local JSON Storage]
@@ -116,16 +123,21 @@ graph TD
     discord_api <-->|Slash Commands & Events| bot
     topgg_api -.->|POST /dblwebhook| webhook
     webhook -->|Updates Shield| db_players
-    bot -->|Sync Servers Task| gge_tracker
+    
+    bot -->|Fetch Stats & Dumps| gge_tracker
+    bot <-->|REST Requests| empire_api
+    empire_api <-->|WebSockets| gge_servers
     bot <-->|Read/Write| storage
 
     %% ==== STYLES ====
     classDef external fill:#e5e7eb,stroke:#4b5563,stroke-width:1.5px,color:#111827
     classDef core fill:#dbeafe,stroke:#1d4ed8,stroke-width:1.5px,color:#172554
+    classDef bridge fill:#fce7f3,stroke:#be185d,stroke-width:1.5px,color:#831843
     classDef data fill:#faf5ff,stroke:#7c3aed,stroke-width:2px,color:#2e1065
 
-    class discord_api,topgg_api,gge_tracker external
+    class discord_api,topgg_api,gge_tracker,gge_servers external
     class bot,webhook core
+    class empire_api bridge
     class db_configs,db_players,db_scans data
     style nas fill:#f0f7ff,stroke:#2563eb,stroke-width:2px,color:#172554
 ```
