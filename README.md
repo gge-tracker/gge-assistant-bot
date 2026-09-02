@@ -115,7 +115,7 @@ The bot is designed to run efficiently via Docker Compose.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Nathael54/gge-assistant-bot.git && cd gge-assistant-bot
+git clone https://github.com/nathael-aa/gge-assistant-bot.git && cd gge-assistant-bot
 
 # 2. Configure environment variables
 # Requires DISCORD_TOKEN, MON_ID_DISCORD, TOPGG_TOKEN, TOPGG_WEBHOOK_SECRET, WEBHOOK_SYSTEM, WEBHOOK_START, WEBHOOK_JOIN, WEBHOOK_LEAVE, WEBHOOK_VOTES, WEBHOOK_SYNC, WEBHOOK_VIGILANCE and WEBHOOK_SCAN
