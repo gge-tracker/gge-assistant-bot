@@ -171,3 +171,12 @@ graph TD
     class db_configs,db_players,db_scans data
     style nas fill:#f0f7ff,stroke:#2563eb,stroke-width:2px,color:#172554
 ```
+
+## ⚖️ License and Legal Disclaimer
+
+The source code of GGE Assistant is licensed under the **Apache License 2.0**. See the `LICENSE` file for more details.
+
+**Third-Party Assets & Copyright:**
+* **Goodgame Empire:** This is an unofficial, community-driven project. It is **not affiliated with, endorsed, sponsored, or approved by Goodgame Studios (Altigi GmbH)**. All game assets, icons, concepts, and trademarks related to Goodgame Empire are the exclusive intellectual property of Goodgame Studios.
+* **Emojis:** Custom emojis found in the `assets/` folder were sourced from the community platform [emoji.gg](https://emoji.gg). They remain the property of their respective original creators and are strictly excluded from the Apache 2.0 license.
+* **Artwork:** The project's visual identity, including the main banner, profile pictures, and logo (`logo.webp`), were generated using Artificial Intelligence.
