@@ -10,6 +10,8 @@ from pathlib import Path
 import aiohttp
 from discord.ext import commands, tasks
 
+from utils import get_api_headers
+
 logger = logging.getLogger("GGE_Bot")
 
 
@@ -21,10 +23,6 @@ class ScanCog(commands.Cog):
         self.base_output_dir = Path(data_path) / "server_scans"
         self.configuration_path = Path(data_path) / "configs" / "configuration.json"
 
-        self.headers = {
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GGE-Assistant/3.0 (Async)",
-        }
         self.webhook_url = os.getenv("WEBHOOK_SCAN")
 
         # Démarrage de la tâche planifiée ex: tous les jours à 00:30 UTC
@@ -84,15 +82,15 @@ class ScanCog(commands.Cog):
             "orderBy": "might_current",
             "orderType": "DESC",
         }
-        headers = self.headers.copy()
-        headers["gge-server"] = server
+
+        headers = await get_api_headers(custom_server=server)
 
         for attempt in range(max_retries):
             try:
                 async with session.get(url, headers=headers, params=params, timeout=15) as response:
                     if response.status == 200:
                         return await response.json()
-                    elif response.status == 429:  # Too Many Requests
+                    elif response.status == 429:
                         wait_time = 15 * (attempt + 1)
                         logger.warning(f"⚠️ 429 sur {server} (Page {page}). Purge API de {wait_time}s...")
                         await asyncio.sleep(wait_time)
