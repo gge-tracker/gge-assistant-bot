@@ -126,23 +126,20 @@ class ProfilsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.bdd_chemin = BASE_DATA_PATH / "bdd_items_gge.json"
-        # Server Command
+
         self.clr_server = discord.Color.from_rgb(255, 244, 230)
-        # Purple for player group
+
         self.clr_joueur = discord.Color.from_rgb(223, 204, 241)
         self.clr_historique = discord.Color.from_rgb(200, 183, 216)
         self.clr_colombe = discord.Color.from_rgb(160, 146, 172)
         self.clr_compare_j = discord.Color.from_rgb(112, 102, 120)
-        # Green for alliance group
+
         self.clr_alliance = discord.Color.from_rgb(129, 186, 39)
         self.clr_alliance_pp = discord.Color.from_rgb(116, 167, 35)
         self.clr_alliance_property = discord.Color.from_rgb(92, 133, 28)
         self.clr_scanner = discord.Color.from_rgb(64, 93, 19)
         self.clr_descalli = discord.Color.from_rgb(77, 111, 23)
 
-    # ========================================================
-    # COMMANDE : Server
-    # ========================================================
     @app_commands.command(name="server", description="Affiche les statistiques globales de ton serveur")
     async def server_stats(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
@@ -326,9 +323,6 @@ class ProfilsCog(commands.Cog):
         await setup_embed_footer(embed, interaction, langue)
         await interaction.followup.send(embed=embed)
 
-    # ========================================================
-    # 👑 COMMANDE : PLAYER PROFILE
-    # ========================================================
     @player_group.command(name="profile", description="Detailed player profile")
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def player_info(self, interaction: discord.Interaction, player: str):
@@ -570,9 +564,6 @@ class ProfilsCog(commands.Cog):
             except:
                 pass
 
-    # ========================================================
-    # 🛰️ MÉTHODE INTERNE : COLLECTEUR DE DONNÉES JOUEUR
-    # ========================================================
     async def _get_player_full_data(
         self, player_name: str, interaction: discord.Interaction = None, langue: str = "fr"
     ):
@@ -776,9 +767,6 @@ class ProfilsCog(commands.Cog):
             logger.error(f"❌ Erreur API Joueur pour {player_name}: {e}")
             return None
 
-    # ========================================================
-    # 📜 COMMANDE : PLAYER HISTORY
-    # ========================================================
     @player_group.command(name="history", description="Displays a player's complete history")
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def history(self, interaction: discord.Interaction, player: str):
@@ -933,9 +921,6 @@ class ProfilsCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds_dict[view.current_cat][0], view=view, wait=True)
         await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
-    # ========================================================
-    # 🕊️ COMMANDE : PLAYER DOVE
-    # ========================================================
     @player_group.command(name="dove", description="Check the date and time a player's protection ended")
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def dove(self, interaction: discord.Interaction, player: str):
@@ -1010,9 +995,6 @@ class ProfilsCog(commands.Cog):
         except Exception:
             await interaction.followup.send(t(langue, "prof_col_err_conn", defaut="{e_error} Erreur de connexion."))
 
-    # ========================================================
-    # 🥊 COMMANDE : COMPARE (PLAYER)
-    # ========================================================
     @player_group.command(
         name="compare", description="Responsive comparative analysis and calculation of the hazard index"
     )
@@ -1349,9 +1331,6 @@ class ProfilsCog(commands.Cog):
 
         await interaction.followup.send(embed=embed)
 
-    # ========================================================
-    # 🛡️ COMMANDE : ALLIANCE
-    # ========================================================
     @alliance_group.command(name="profile", description="Detailed profile of an alliance (Quick and paginated)")
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_info(self, interaction: discord.Interaction, alliance_name: str):
@@ -1568,9 +1547,6 @@ class ProfilsCog(commands.Cog):
             except:
                 pass
 
-    # ========================================================
-    # 🛰️ MÉTHODE INTERNE : COLLECTEUR DE DONNÉES ALLIANCE
-    # ========================================================
     async def _get_alliance_full_data(
         self, alliance_name: str, interaction: discord.Interaction = None, langue: str = "fr"
     ):
@@ -1690,9 +1666,6 @@ class ProfilsCog(commands.Cog):
             "parsed_data": parsed_data,
         }
 
-    # ========================================================
-    # 📈 COMMANDE : HISTORIQUE ALLIANCE MIGHT
-    # ========================================================
     @alliance_group.command(name="might", description="Historical Power (PP) of an alliance over X days")
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     @app_commands.describe(days="Period to analyze in days (Default: 3, Maximum: 10)")
@@ -1883,9 +1856,6 @@ class ProfilsCog(commands.Cog):
             await interaction.followup.send(embed=embeds[0], view=view)
         await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
-    # ========================================================
-    # COMMANDE : ALLIANCE PROPERTY
-    # ========================================================
     @alliance_group.command(name="property", description="Displays all properties of an alliance")
     @app_commands.describe(alliance_name="Alliance name")
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
@@ -1894,7 +1864,6 @@ class ProfilsCog(commands.Cog):
         langue, serveur = await get_server_config(interaction)
         headers = await get_api_headers(interaction)
 
-        # --- 1. RECHERCHE DE L'ID DE L'ALLIANCE ---
         safe_alliance = quote(alliance_name)
         url_search = f"https://api.gge-tracker.com/api/v1/alliances/name/{safe_alliance}"
 
@@ -1933,7 +1902,6 @@ class ProfilsCog(commands.Cog):
                 )
             )
 
-        # --- 2. RÉCUPÉRATION DE LA CARTOGRAPHIE ---
         url_carto = f"https://api.gge-tracker.com/api/v1/cartography/id/{alliance_id}"
         async with self.bot.session.get(url_carto, headers=headers, timeout=15) as r:
             if r.status != 200:
@@ -1955,7 +1923,6 @@ class ProfilsCog(commands.Cog):
                 )
             )
 
-        # --- 3. CONFIGURATION DES DONNÉES ---
         PROP_TYPES = {
             3: {
                 "name": t(langue, "prop_capital", defaut="Capitale"),
@@ -1989,7 +1956,6 @@ class ProfilsCog(commands.Cog):
 
         all_props = []
 
-        # --- 4. PARCOURS ET TRI DES JOUEURS ---
         for player in carto_data:
             p_name = player.get("name", "Inconnu")
 
@@ -2013,7 +1979,6 @@ class ProfilsCog(commands.Cog):
 
         all_props.sort(key=lambda p: (p["type"], p["world_id"], p["player"].lower()))
 
-        # --- 5. CONSTRUCTION DE L'EMBED APLATI ---
         embeds = []
         titre_base = t(langue, "cmd_prop_embed_title", alliance=nom_officiel, defaut=f"🏰 Propriétés de {nom_officiel}")
 
@@ -2055,9 +2020,6 @@ class ProfilsCog(commands.Cog):
             await interaction.followup.send(embed=embeds[0])
         await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
-    # ========================================================
-    # 📜 COMMANDE : DESCRIPTION ALLIANCE (API GGE Tracker)
-    # ========================================================
     @alliance_group.command(name="description", description="View the history of the last wall changes")
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_description(self, interaction: discord.Interaction, alliance_name: str):
@@ -2080,7 +2042,6 @@ class ProfilsCog(commands.Cog):
         safe_alliance = quote(str(alliance_name))
         alliance_id = None
 
-        # --- 1. RECHERCHE DE L'ID (VIA API NAME) ---
         try:
             search_url = f"https://api.gge-tracker.com/api/v1/alliances/name/{safe_alliance}"
             async with session.get(search_url, headers=headers, timeout=10) as resp:
@@ -2092,7 +2053,6 @@ class ProfilsCog(commands.Cog):
         except Exception as e:
             self.logger.warning(f"⚠️ [Description Alliance] API /name/ injoignable pour {alliance_name} : {e}")
 
-        # --- 2. RECHERCHE DE L'ID (PLAN B : SCAN LOCAL) ---
         if not alliance_id:
             try:
                 from utils import BASE_DATA_PATH
@@ -2131,7 +2091,6 @@ class ProfilsCog(commands.Cog):
             )
             return await interaction.followup.send(msg)
 
-        # --- 3. RÉCUPÉRATION DES MURS VIA L'ID TROUVÉ ---
         api_url = f"https://api.gge-tracker.com/api/v1/alliances/id/{alliance_id}"
 
         try:
@@ -2154,7 +2113,6 @@ class ProfilsCog(commands.Cog):
                 t(langue, "prof_desc_err_tech", defaut="{e_error} Erreur technique lors de la connexion à l'API.")
             )
 
-        # --- 4. TRAITEMENT DES DONNÉES ---
         nom_alliance = data.get("alliance_name", alliance_name)
         desc_actuelle = data.get("description")
         historique = data.get("description_history") or []
@@ -2197,7 +2155,6 @@ class ProfilsCog(commands.Cog):
 
         ts_act = int(actualisation_dt.timestamp())
 
-        # --- 5. PRÉPARATION DES BLOCS DE TEXTE ---
         murs_blocks = []
 
         murs_blocks.append(
@@ -2228,7 +2185,6 @@ class ProfilsCog(commands.Cog):
                     self.logger.warning(f"⚠️ Erreur de parsing date historique pour {nom_alliance} : {e}")
                     continue
 
-        # --- 6. PAGINATION (3 murs par page max) ---
         lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
         str_date_header = f"{lbl_date} <t:{ts_act}:F> (<t:{ts_act}:R>)\n\n"
         desc_i18n = t(
@@ -2272,9 +2228,6 @@ class ProfilsCog(commands.Cog):
             view = PaginationView(embeds)
             await interaction.followup.send(embed=embeds[0], view=view)
 
-    # ==========================================
-    # 🔍 COMMANDE : ALLIANCE SCANNER
-    # ==========================================
     @alliance_group.command(name="scanner", description="Analyze the enemy roster in real time (Doves, PP, Targets)")
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_scanner(self, interaction: discord.Interaction, alliance_name: str):

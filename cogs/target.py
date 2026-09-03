@@ -218,7 +218,6 @@ class TargetWizard(discord.ui.View):
         self.clear_items()
         embed = discord.Embed(color=discord.Color.blue())
 
-        # 🟢 Extraction des émojis via le dictionnaire global directement
         e_next = DICT_EMOJIS.get("e_next", "⏭️")
         e_last = DICT_EMOJIS.get("e_last", "⏮️")
         e_check = DICT_EMOJIS.get("e_check", "✅")
@@ -230,7 +229,7 @@ class TargetWizard(discord.ui.View):
         e_green = DICT_EMOJIS.get("e_std_green_circle", "🟢")
         e_sleep = DICT_EMOJIS.get("e_std_sleeping_face", "😴")
         e_prohib = DICT_EMOJIS.get("e_std_prohibited", "🚫")
-        e_ignore = "♾️"  # Fallback unicode simple pour "Ignore"
+        e_ignore = "♾️"
 
         lbl_ignore = t(self.langue, "wizard_btn_ignore", defaut="Doesn't matter")
         lbl_custom = t(self.langue, "wizard_btn_custom", defaut="Enter Min / Max")
@@ -596,9 +595,6 @@ class CiblePaginationView(discord.ui.View):
         )
 
 
-# ==========================================
-# ⚔️ COG : TARGET
-# ==========================================
 class TargetCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -688,9 +684,6 @@ class TargetCog(commands.Cog):
         headers = await get_api_headers(custom_server=serveur)
         session_active = self.bot.session
 
-        # ----------------------------------------------------
-        # SETUP: GET ORIGIN PLAYER
-        # ----------------------------------------------------
         loading_title = t(langue, "target_load_title", defaut="📡 GGE-Tracker Radar Scan...")
         loading_desc = t(langue, "target_load_desc", defaut="Querying database directly and sorting...")
 
@@ -745,9 +738,6 @@ class TargetCog(commands.Cog):
                 await interaction.edit_original_response(content=err_msg, embed=None, view=None)
             return
 
-        # ----------------------------------------------------
-        # STEP 1: API REQUEST PARAMS
-        # ----------------------------------------------------
         params = {
             "page": 1,
             "orderBy": "distance",
@@ -808,9 +798,6 @@ class TargetCog(commands.Cog):
         except:
             pass
 
-        # ----------------------------------------------------
-        # STEP 2: PROBE & FETCH
-        # ----------------------------------------------------
         total_pages = 10
 
         params["page"] = 1
@@ -963,9 +950,6 @@ class TargetCog(commands.Cog):
                 logger.error(f"Error API _execute_cible : {e}")
                 continue
 
-        # ----------------------------------------------------
-        # FINAL DISPLAY
-        # ----------------------------------------------------
         if not final_targets:
             empty_msg = t(
                 langue, "target_err_no_target_valid", defaut="{e_error} No player matching your filters was found."
@@ -1003,7 +987,6 @@ class TargetCog(commands.Cog):
         lbl_dist = t(langue, "target_cible_field_dist", defaut="Distance:")
         lbl_coords = t(langue, "target_cible_field_coords", defaut="Coordinates:")
 
-        # 🟢 Extraction des émojis pour l'affichage final
         e_peace = DICT_EMOJIS.get("e_peace", "🕊️")
         e_players = DICT_EMOJIS.get("e_players", "👤")
         e_alli_icon = DICT_EMOJIS.get("e_alliance_icon", "🛡️")

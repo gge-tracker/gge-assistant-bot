@@ -120,9 +120,6 @@ HELP_CONFIG = {
 }
 
 
-# ==========================================
-# 🌟 LISTE DES PROJETS À DÉCOUVRIR
-# ==========================================
 PROJECTS_LIST = [
     {
         "title_key": "cmd_disc_gge_tracker_title",
@@ -181,9 +178,6 @@ PROJECTS_LIST = [
 ]
 
 
-# ==========================================
-# 🎛️ MENU DÉROULANT (SELECT MENU)
-# ==========================================
 class HelpSelect(discord.ui.Select):
     def __init__(self, langue: str):
         self.langue = langue
@@ -240,7 +234,6 @@ class HelpSelect(discord.ui.Select):
             )
             embed.description = desc
         else:
-            # --- Légende des capacités serveur ---
             legende = t(
                 self.langue,
                 "help_legend",
@@ -252,7 +245,6 @@ class HelpSelect(discord.ui.Select):
             for cmd in cat_data["commands"]:
                 cmd_desc = t(self.langue, cmd["desc_key"], defaut="> *Description manquante*")
 
-                # --- Attribution dynamique de l'emoji (Priorité au WIP) ---
                 is_wip = cmd.get("wip", False)
                 is_advanced = cmd.get("advanced", False)
 
@@ -287,23 +279,17 @@ class HelpView(discord.ui.View):
                 pass
 
 
-# ==========================================
-# 🤖 MODULE PRINCIPAL (COMMANDES DU BOT)
-# ==========================================
 class AideCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-        self.clr_discover = discord.Color.from_rgb(88, 101, 242)  # Bleu "Blurple"
-        self.clr_statut = discord.Color.from_rgb(255, 207, 64)  # Gold1
-        self.clr_news = discord.Color.from_rgb(255, 191, 0)  # Gold2
-        self.clr_vote = discord.Color.from_rgb(232, 198, 112)  # Gold3
-        self.clr_support = discord.Color.from_rgb(241, 213, 143)  # Gold4
-        self.clr_contact = discord.Color.from_rgb(247, 226, 173)  # Gold5
+        self.clr_discover = discord.Color.from_rgb(88, 101, 242)
+        self.clr_statut = discord.Color.from_rgb(255, 207, 64)
+        self.clr_news = discord.Color.from_rgb(255, 191, 0)
+        self.clr_vote = discord.Color.from_rgb(232, 198, 112)
+        self.clr_support = discord.Color.from_rgb(241, 213, 143)
+        self.clr_contact = discord.Color.from_rgb(247, 226, 173)
 
-    # ==========================================
-    # 📖 COMMANDE : HELP
-    # ==========================================
     @app_commands.command(name="help", description="Displays the complete user manual for the GGE Assistant bot")
     async def aide_commande(self, interaction: discord.Interaction):
         try:
@@ -330,9 +316,6 @@ class AideCog(commands.Cog):
         view = HelpView(langue)
         view.message = await interaction.followup.send(embed=embed, view=view, wait=True)
 
-    # ==========================================
-    # 📡 COMMANDE : STATUS
-    # ==========================================
     @app_commands.command(
         name="status", description="Checks the overall health status of the system (Bot, NAS Storage, GGE-Tracker API)"
     )
@@ -351,7 +334,6 @@ class AideCog(commands.Cog):
             timestamp=discord.utils.utcnow(),
         )
 
-        # 🤖 1. DIAGNOSTIC BOT DISCORD
         ping = round(self.bot.latency * 1000)
 
         val_oui = t(langue, "statut_yes", defaut="{e_parameters} Oui")
@@ -373,7 +355,6 @@ class AideCog(commands.Cog):
         )
         embed.add_field(name=t(langue, "statut_bot_title", defaut="🤖 Bot Discord"), value=bot_txt, inline=False)
 
-        # 💾 2. DIAGNOSTIC STOCKAGE SERVEUR
         try:
             total, used, free = shutil.disk_usage("/app/data")
             total_gb = total / (1024**3)
@@ -381,7 +362,6 @@ class AideCog(commands.Cog):
             free_gb = free / (1024**3)
             pourcentage_plein = (used / total) * 100
 
-            # --- 🔍 Scan Serveur ---
             scans_dir = Path(f"/app/data/server_scans/{serveur}")
             last_scan_txt = t(langue, "statut_storage_no_file", defaut="{e_error} Aucun fichier trouvé")
 
@@ -418,7 +398,6 @@ class AideCog(commands.Cog):
             name=t(langue, "statut_storage_title", defaut="💾 Stockage Interne"), value=storage_txt, inline=False
         )
 
-        # 📡 3. DIAGNOSTIC API LIVE (GGE-TRACKER)
         url_api = "https://api.gge-tracker.com/api/v1/"
         headers = await get_api_headers(custom_server=serveur)
 
@@ -510,9 +489,6 @@ class AideCog(commands.Cog):
         await setup_embed_footer(embed, interaction, langue)
         await interaction.followup.send(embed=embed)
 
-    # ========================================================
-    # 🌍 COMMANDE : DISCOVER
-    # ========================================================
     @app_commands.command(name="discover", description="Discover useful tools and community projects for GGE")
     async def discover(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
@@ -520,7 +496,6 @@ class AideCog(commands.Cog):
         embeds = []
         projets_par_page = 3
 
-        # On découpe la liste en paquets (chunks)
         for i in range(0, len(PROJECTS_LIST), projets_par_page):
             chunk = PROJECTS_LIST[i : i + projets_par_page]
 
@@ -559,9 +534,6 @@ class AideCog(commands.Cog):
             await interaction.response.send_message(embed=embeds[0], view=view)
             view.message = await interaction.original_response()
 
-    # ========================================================
-    # 🆘 COMMANDE : SUPPORT
-    # ========================================================
     @app_commands.command(name="support", description="Get the invite link to the official support server")
     async def support(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
@@ -585,9 +557,6 @@ class AideCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed, view=view)
 
-    # ========================================================
-    # ⭐ COMMANDE : VOTE
-    # ========================================================
     @app_commands.command(name="vote", description="Support the bot by voting on Top.gg")
     async def vote(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
@@ -610,9 +579,6 @@ class AideCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed, view=view)
 
-    # ========================================================
-    # 📰 COMMANDE : NEWS
-    # ========================================================
     @app_commands.command(name="news", description="Read the latest bot updates and patch notes")
     async def news(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
@@ -635,9 +601,6 @@ class AideCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed, view=view)
 
-    # ==========================================
-    # 📩 COMMANDE : CONTACT
-    # ==========================================
     @app_commands.command(name="contact", description="Send a problem, bug, or suggestion directly to the developer")
     @app_commands.describe(message="Write your problem or suggestion in detail here")
     async def contact_commande(self, interaction: discord.Interaction, message: str):
@@ -698,7 +661,6 @@ class AideCog(commands.Cog):
             embed_mp.add_field(name="{e_castles} Provenance", value=f"*{nouveau_ticket['serveur']}*", inline=True)
             embed_mp.add_field(name="{e_memberlist} Message", value=f"```text\n{message}\n```", inline=False)
 
-            # On remplace les emojis dynamiques manuellement pour le MP admin car setup_embed_footer ne lit que le footer
             embed_mp.fields[0].name = embed_mp.fields[0].name.replace("{e_players}", DICT_EMOJIS.get("e_players", "👤"))
             embed_mp.fields[1].name = embed_mp.fields[1].name.replace("{e_castles}", DICT_EMOJIS.get("e_castles", "🏰"))
             embed_mp.fields[2].name = embed_mp.fields[2].name.replace(
@@ -721,9 +683,6 @@ class AideCog(commands.Cog):
         )
         await interaction.followup.send(succ_msg)
 
-    # ==========================================
-    # 🛡️ PROTECTEUR DE CLÉS POUR LE SCRIPT DE SYNCHRO
-    # ==========================================
     def _dummy_i18n():
         langue = "fr"
 

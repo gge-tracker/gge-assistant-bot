@@ -140,9 +140,6 @@ class ClassementCog(commands.Cog):
         except Exception as e:
             self.logger.error(f"❌ [Classement] Erreur critique lors de l'initialisation du JSON : {e}")
 
-    # ========================================================
-    # 🎯 AUTOCOMPLÉTION DYNAMIQUE DES TRANCHES
-    # ========================================================
     async def tranche_autocomplete(self, interaction: discord.Interaction, current: str):
         ns = interaction.namespace
         choix = []
@@ -243,7 +240,6 @@ class ClassementCog(commands.Cog):
         embed = discord.Embed(color=color)
         description = ""
 
-        # --- MAPPING DES EMOJIS DE LIGUE ---
         TITRES_PRE = {
             13: get_emo(langue, "{e_title_0}"),
             103: get_emo(langue, "{e_title_1}"),
@@ -1721,9 +1717,6 @@ class ClassementCog(commands.Cog):
 
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
-    # ==========================================
-    # LA FAMEUSE COMMANDE CONTESTS OUBLIÉE
-    # ==========================================
     @classement.command(name="contests", description="Displays a ranking for specific contests")
     @app_commands.describe(
         evenement="Événement", player="Pseudo (Optionnel)", rank="Rang (Optionnel)", tranche="Tranche (Optionnel)"

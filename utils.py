@@ -29,9 +29,7 @@ ADMINS_DIR = BASE_DATA_PATH / "admins"
 for directory in [CONFIG_DIR, JOUEURS_DIR, SERVEURS_DIR, ADMINS_DIR, LOCALES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# ==========================================
-# 🧠 CACHE RAM POUR ÉVITER LE RÉVEIL DU NAS
-# ==========================================
+
 USERS_CONFIG_CACHE = None
 GUILDS_CONFIG_CACHE = None
 BLOCKS_CACHE = None
@@ -43,16 +41,12 @@ def clear_config_cache():
     GUILDS_CONFIG_CACHE = None
 
 
-# ==========================================
-# 🌍 GESTION DYNAMIQUE DES SERVEURS ET LANGUES
-# ==========================================
 async def get_server_config(interaction: discord.Interaction):
     global USERS_CONFIG_CACHE, GUILDS_CONFIG_CACHE
 
     default_lang = "fr"
     default_server = "E4K_FR1"
 
-    # 1. On charge TOUS les utilisateurs en RAM une seule fois
     if USERS_CONFIG_CACHE is None:
         path_users = CONFIG_DIR / "users.json"
         if path_users.exists():
@@ -64,14 +58,12 @@ async def get_server_config(interaction: discord.Interaction):
         else:
             USERS_CONFIG_CACHE = {}
 
-    # Vérification ultra-rapide dans la RAM
     user_id = str(interaction.user.id)
     if user_id in USERS_CONFIG_CACHE:
         u_lang = USERS_CONFIG_CACHE[user_id].get("langue", default_lang)
         u_srv = USERS_CONFIG_CACHE[user_id].get("gge_server", default_server)
         return u_lang, u_srv
 
-    # 2. On charge TOUS les serveurs en RAM une seule fois
     if interaction.guild:
         if GUILDS_CONFIG_CACHE is None:
             path_guilds = CONFIG_DIR / "serveurs.json"
@@ -103,9 +95,6 @@ async def get_api_headers(interaction: discord.Interaction = None, custom_server
     return {"accept": "application/json", "gge-server": server, "User-Agent": "Mozilla/5.0 GGE-Assistant/2.0"}
 
 
-# ===========================================
-# 🌍 MOTEUR DE TRADUCTION (i18n)
-# ===========================================
 try:
     from emojis import DICT_EMOJIS
 except ImportError as e:
@@ -115,10 +104,9 @@ except ImportError as e:
 _translations = {}
 
 
-# Le Gilet Pare-Balles : Si une variable manque, elle ne fait pas planter le bot
 class SafeDict(dict):
     def __missing__(self, key):
-        return f"{{{key}}}"  # Renvoie {nom_de_la_cle_manquante} au lieu de crasher
+        return f"{{{key}}}"
 
 
 def charger_langues():
@@ -141,19 +129,14 @@ def t(langue: str, cle: str, defaut: str = None, **kwargs) -> str:
     dico = _translations.get(langue, _translations.get("fr", {}))
     texte = dico.get(cle, defaut if defaut else f"[{cle}_MANQUANT]")
 
-    # On fusionne le dictionnaire global des émojis avec tes variables locales
     variables_fusionnees = {**DICT_EMOJIS, **kwargs}
 
     if variables_fusionnees:
-        # On utilise format_map avec notre SafeDict pour une sécurité absolue
         return texte.format_map(SafeDict(**variables_fusionnees))
 
     return texte
 
 
-# ==========================================
-# 🛠️ OUTILS UNIVERSELS & UI (PAGINATION CORRIGÉE)
-# ==========================================
 class PaginationView(discord.ui.View):
     def __init__(self, embeds, timeout=3600):
         super().__init__(timeout=timeout)
@@ -161,7 +144,6 @@ class PaginationView(discord.ui.View):
         self.current_page = 0
         self.message = None
 
-        # Création des boutons dynamiquement pour éviter le crash d'émojis
         self.btn_prev = discord.ui.Button(
             emoji=DICT_EMOJIS.get("e_last", "⏮️"), style=discord.ButtonStyle.secondary, custom_id="page_prev"
         )
@@ -225,7 +207,7 @@ class RefreshOnlyView(discord.ui.View):
         self.add_item(self.refresh_btn)
 
     async def cb_refresh(self, interaction: discord.Interaction):
-        # Sécurisation du message parent
+
         if not self.message:
             self.message = interaction.message
         await self.callback_func(interaction)
@@ -240,9 +222,6 @@ class RefreshOnlyView(discord.ui.View):
                 pass
 
 
-# ==========================================
-# 🎲 MESSAGE SOUTIENS ALEATOIRE
-# ==========================================
 VOTES_FILE = JOUEURS_DIR / "votes.json"
 
 
@@ -250,7 +229,6 @@ async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_per
     """Vérifie si le joueur est protégé par les 7 jours. Sinon, lance le dé."""
     user_id_str = str(interaction.user.id)
 
-    # 1. Vérification du bouclier de 7 jours (Ultra-rapide, zéro API)
     if VOTES_FILE.exists():
         try:
             with open(VOTES_FILE, encoding="utf-8") as f:
@@ -259,20 +237,17 @@ async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_per
             if user_id_str in votes_data:
                 deadline = datetime.fromisoformat(votes_data[user_id_str])
                 if datetime.now() < deadline:
-                    return  # Le joueur a son bouclier actif, on le laisse tranquille !
+                    return
 
         except Exception as e:
             print(f"❌ [DEBUG VOTE] Erreur lors de la lecture du bouclier : {e}")
 
-    # 2. Le tirage (Dé virtuel) - On ne le lance que s'il n'est pas protégé
     if random.randint(1, 100) > probability_percent:
-        return  # Perdu : On s'arrête là silencieusement
+        return
 
-    # 3. Action : Création des liens
     vote_url = "https://top.gg/bot/1472309793065533493/vote"
     review_url = "https://top.gg/bot/1472309793065533493#reviews"
 
-    # Textes traduits
     btn_vote_lbl = t(langue, "vote_prompt_btn", defaut="Voter (1 clic)")
     btn_review_lbl = t(langue, "review_prompt_btn", defaut="Laisser un avis")
     titre_txt = t(langue, "vote_prompt_title", defaut="⭐ Coucou ! Un petit service ?")
@@ -285,7 +260,6 @@ async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_per
 
     view = discord.ui.View()
 
-    # Utilisation du dictionnaire d'émojis
     btn_vote = discord.ui.Button(label=btn_vote_lbl, url=vote_url, emoji=DICT_EMOJIS.get("e_sparkles", "✨"))
     view.add_item(btn_vote)
 
@@ -300,9 +274,6 @@ async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_per
         pass
 
 
-# ==========================================
-# 🌍 GET API TIMESTAMP
-# ==========================================
 def _get_api_timestamp(*sources):
     """
     Explore de manière récursive et profonde les structures de données renvoyées par l'API.
@@ -373,9 +344,6 @@ def get_discord_timestamp(iso_str, style="R", langue="fr"):
         return t(langue, "utils_unknown_date", defaut="Date inconnue")
 
 
-# ==========================================
-# 🧠 LECTURE DU CACHE ET AUTOCOMPLÉTION
-# ==========================================
 async def get_cached_data(serveur="E4K_FR1"):
     global CACHE
 
@@ -681,9 +649,6 @@ async def generer_rapport_alliance_embed(
     return embed, lignes_classement, stats_text, global_latest_str
 
 
-# =========================================
-# ⚙️ VARIABLES GLOBALES & CACHE
-# =========================================
 MON_ID_DISCORD = int(os.getenv("MON_ID_DISCORD", 0))
 TOKEN = os.getenv("DISCORD_TOKEN")
 TOPGG_TOKEN = os.getenv("TOPGG_TOKEN")
@@ -705,9 +670,7 @@ TRACKER_EVENTS = {
     "Battle of Berimond": ["player_event_berimond_invasion_history", "player_event_berimond_kingdom_history"],
 }
 
-# ==========================================
-# 🔐 MOTEUR DE VERROUILLAGE ASYNCHRONE
-# ==========================================
+
 FILE_LOCKS = {}
 
 
@@ -718,9 +681,6 @@ def get_file_lock(filepath):
     return FILE_LOCKS[path_key]
 
 
-# ==========================================
-# 🔧 Footer global
-# ==========================================
 BOT_VERSION = "GGE Assistant • Version 1.2.5"
 
 
@@ -736,9 +696,6 @@ async def setup_embed_footer(
     embed.set_footer(text=txt)
 
 
-# ==========================================
-# 🔧 MAINTENANCE & CACHES JSON
-# ==========================================
 def load_maintenance():
     path = ADMINS_DIR / "maintenance.json"
     if os.path.exists(path):

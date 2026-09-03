@@ -67,9 +67,6 @@ print(
 logger.info("🟢 Démarrage du système de logs...")
 
 
-# ==========================================
-# 💌 MESSAGE DE BIENVENUE INTERACTIF
-# ==========================================
 class WelcomeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -127,9 +124,6 @@ class WelcomeView(discord.ui.View):
         await interaction.response.edit_message(embed=self.get_welcome_embed("de"))
 
 
-# ==========================================
-# 🤖 CLASSE PRINCIPALE DU BOT
-# ==========================================
 class GGEAssistantBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -144,7 +138,6 @@ class GGEAssistantBot(commands.Bot):
         self.status_index = 0
         self.custom_status = None
 
-        # 🔗 Raccordement du gestionnaire global d'erreurs de commandes Slash
         self.tree.on_error = self.on_tree_error
 
     def export_commands_json(self):
@@ -153,18 +146,16 @@ class GGEAssistantBot(commands.Bot):
             payload = []
 
             def process_command(cmd, group_name=""):
-                # Si c'est un groupe de commandes (ex: /target)
+
                 if isinstance(cmd, discord.app_commands.Group):
                     group_data = {
                         "name": f"{group_name}{cmd.name}",
                         "description": cmd.description,
-                        "type": 1,  # Type 1 = CHAT_INPUT (Slash Command)
+                        "type": 1,
                         "options": [],
                     }
 
-                    # On parcourt les sous-commandes du groupe
                     for sub_cmd in cmd.commands:
-                        # Discord gère les sous-commandes avec le type 1 ou 2 (Subcommand / Subcommand Group)
                         sub_data = {
                             "name": sub_cmd.name,
                             "description": sub_cmd.description,
@@ -175,7 +166,6 @@ class GGEAssistantBot(commands.Bot):
 
                     payload.append(group_data)
                 else:
-                    # Commande classique isolée (ex: /ping)
                     cmd_data = {
                         "name": cmd.name,
                         "description": cmd.description,
@@ -184,7 +174,6 @@ class GGEAssistantBot(commands.Bot):
                     }
                     payload.append(cmd_data)
 
-            # On parcourt l'arbre des commandes
             for cmd in self.tree.get_commands():
                 process_command(cmd)
 
@@ -247,7 +236,6 @@ class GGEAssistantBot(commands.Bot):
             except Exception as e:
                 logger.error(f"❌ Erreur {ext} : {e}")
 
-        # 1. Synchronisation globale (pour le reste du monde)
         await self.tree.sync()
 
         self.export_commands_json()
@@ -274,13 +262,11 @@ class GGEAssistantBot(commands.Bot):
 
         self.add_view(WelcomeView())
 
-        # 🟢 DÉMARRAGE DU SERVEUR WEBHOOK (Port 5011)
         self.web_app = web.Application()
         self.web_app.router.add_post("/dblwebhook", self.vote_handler)
         self.web_runner = web.AppRunner(self.web_app)
         await self.web_runner.setup()
 
-        # 0.0.0.0 veut dire qu'on accepte les connexions de l'extérieur du conteneur
         self.web_site = web.TCPSite(self.web_runner, "0.0.0.0", 5011)
         await self.web_site.start()
         logger.info("🌐 [Webhook] Serveur web en écoute sur le port 5011.")
@@ -289,7 +275,6 @@ class GGEAssistantBot(commands.Bot):
         charger_langues()
         logger.info(f"✅ Bot connecté en tant que {self.user} (ID: {self.user.id})")
 
-        # 🔄 PRÉAVIS DE REDÉMARRAGE AUX UTILISATEURS
         try:
             path_fort = JOUEURS_DIR / "forteresses_sessions.json"
             path_users = CONFIG_DIR / "users.json"
@@ -346,15 +331,11 @@ class GGEAssistantBot(commands.Bot):
         await self.change_presence(activity=activity, status=target_status)
         logger.info(f"📡 Statut mis à jour : {activity.name} | Pastille : {target_status}")
 
-    # ==========================================
-    # 📥 SUIVI DES AJOUTS / RETRAITS DU BOT
-    # ==========================================
     async def on_guild_join(self, guild: discord.Guild):
         logger.info(
             f"🎉 [NOUVEAU SERVEUR] Le bot a rejoint '{guild.name}' (ID: {guild.id}) | Membres : {guild.member_count}"
         )
 
-        # 📢 WEBHOOK ADMIN : Nouveau serveur
         webhook_servers = os.getenv("WEBHOOK_JOIN")
         if webhook_servers and webhook_servers.startswith("http"):
             proprio = guild.owner.name if guild.owner else "Inconnu"
@@ -364,7 +345,7 @@ class GGEAssistantBot(commands.Bot):
                     {
                         "title": "🎉 Nouveau Serveur Rejoint !",
                         "description": f"**Nom :** `{guild.name}`\n**ID :** `{guild.id}`\n**Membres :** `{guild.member_count}`\n**Propriétaire :** `{proprio}`",
-                        "color": 0x2ECC71,  # Vert
+                        "color": 0x2ECC71,
                     }
                 ],
             }
@@ -373,7 +354,6 @@ class GGEAssistantBot(commands.Bot):
             except:
                 pass
 
-        # Message de bienvenue standard avec vérification stricte des permissions
         channel_to_send = guild.system_channel
 
         def can_send_welcome(channel):
@@ -416,7 +396,6 @@ class GGEAssistantBot(commands.Bot):
     async def on_guild_remove(self, guild: discord.Guild):
         logger.warning(f"👋 [DÉPART SERVEUR] Le bot a été retiré de '{guild.name}' (ID: {guild.id})")
 
-        # 📢 WEBHOOK ADMIN : Départ d'un serveur
         webhook_servers = os.getenv("WEBHOOK_LEAVE")
         if webhook_servers and webhook_servers.startswith("http"):
             payload = {
@@ -425,7 +404,7 @@ class GGEAssistantBot(commands.Bot):
                     {
                         "title": "👋 Serveur Quitté",
                         "description": f"**Nom :** `{guild.name}`\n**ID :** `{guild.id}`\n**Membres perdus :** `{guild.member_count}`",
-                        "color": 0xE74C3C,  # Rouge
+                        "color": 0xE74C3C,
                     }
                 ],
             }
@@ -434,9 +413,6 @@ class GGEAssistantBot(commands.Bot):
             except:
                 pass
 
-    # ==========================================
-    # 🛰️ BOUCLE DE VEILLE DE FIN DE SCAN (scan.flag)
-    # ==========================================
     @tasks.loop(seconds=15)
     async def flag_watcher_task(self):
         flag_path = Path("/app/data/scan.flag")
@@ -460,9 +436,6 @@ class GGEAssistantBot(commands.Bot):
                 except Exception as e:
                     logger.error(f"❌ [Watcher] Échec : {e}")
 
-    # ==========================================
-    # 🔄 BOUCLE DE ROTATION DES STATUTS
-    # ==========================================
     @tasks.loop(seconds=20)
     async def status_task(self):
         if self.maintenance_mode:
@@ -504,9 +477,6 @@ class GGEAssistantBot(commands.Bot):
     async def before_status_task(self):
         await self.wait_until_ready()
 
-    # ==========================================
-    # 🌐 WEBHOOK TOP.GG (HYBRIDE v0 & v1 SÉCURISÉ)
-    # ==========================================
     async def vote_handler(self, request):
         secret = os.getenv("TOPGG_WEBHOOK_SECRET", "faux_secret")
 
@@ -515,9 +485,7 @@ class GGEAssistantBot(commands.Bot):
 
         raw_body = await request.text()
 
-        # --- 1. VÉRIFICATION DE SÉCURITÉ ---
         if signature_header:
-            # Méthode v1 (Nouvelle avec HMAC)
             try:
                 parts = dict(part.split("=") for part in signature_header.split(","))
                 message = f"{parts.get('t')}.{raw_body}".encode()
@@ -529,7 +497,6 @@ class GGEAssistantBot(commands.Bot):
                 return web.Response(status=400, text="Erreur de calcul v1")
 
         elif auth_header:
-            # Méthode v0 (Ancienne avec Header)
             if auth_header != secret:
                 logger.warning("❌ [Webhook] Mot de passe v0 invalide.")
                 return web.Response(status=401, text="Mauvais mot de passe v0")
@@ -538,19 +505,15 @@ class GGEAssistantBot(commands.Bot):
             logger.warning(f"❌ [Webhook] Requête refusée (ni v0, ni v1). Headers : {request.headers}")
             return web.Response(status=401, text="Missing auth")
 
-        # --- 2. LECTURE INTELLIGENTE DU JSON (v0 & v1) ---
         try:
             payload = json.loads(raw_body)
         except Exception:
             return web.Response(status=400, text="Invalid JSON")
 
-        # Détection du format
         if "data" in payload:
-            # C'est un format v1
             user_id = payload.get("data", {}).get("user", {}).get("platform_id")
             event_type = payload.get("type")
         else:
-            # C'est un format v0
             user_id = payload.get("user")
             event_type = payload.get("type")
 
@@ -558,7 +521,6 @@ class GGEAssistantBot(commands.Bot):
             logger.error(f"❌ [Webhook] Impossible de lire l'ID dans le payload : {payload}")
             return web.Response(status=400, text="Missing user ID")
 
-        # --- 3. GESTION DU TYPE (TEST ou VOTE) ---
         webhook_votes = os.getenv("WEBHOOK_VOTES")
 
         if event_type in ["test", "webhook.test"]:
@@ -566,7 +528,6 @@ class GGEAssistantBot(commands.Bot):
         else:
             logger.info(f"✅ [Webhook] Vrai vote reçu ! Application du bouclier pour {user_id}.")
 
-            # 📢 WEBHOOK ADMIN : Alerte de Vote !
             if webhook_votes and webhook_votes.startswith("http"):
                 payload = {
                     "username": "GGE Top.gg 🏆",
@@ -574,7 +535,7 @@ class GGEAssistantBot(commands.Bot):
                         {
                             "title": "🌟 Nouveau Vote reçu !",
                             "description": f"Un joueur (ID: `<@{user_id}>`) vient de voter pour le bot sur Top.gg !\nSon bouclier anti-pubs est activé pour 7 jours.",
-                            "color": 0xFFD700,  # Doré
+                            "color": 0xFFD700,
                         }
                     ],
                 }
@@ -583,7 +544,6 @@ class GGEAssistantBot(commands.Bot):
                 except:
                     pass
 
-        # --- 4. SAUVEGARDE (Bouclier 7j) ---
         VOTES_FILE = JOUEURS_DIR / "votes.json"
         votes_data = {}
         if VOTES_FILE.exists():
@@ -602,20 +562,17 @@ class GGEAssistantBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ [Webhook] Erreur lors de la sauvegarde : {e}")
 
-        # --- 5. MESSAGE PRIVÉ (TRADUIT) ---
         try:
             user = self.get_user(int(user_id)) or await self.fetch_user(int(user_id))
             if user:
-                # 1. On cherche la langue du joueur dans le cache RAM
                 from utils import USERS_CONFIG_CACHE
 
-                langue = "en"  # Anglais par défaut
+                langue = "en"
 
                 user_data = USERS_CONFIG_CACHE.get(str(user_id))
                 if user_data and isinstance(user_data, dict):
                     langue = user_data.get("lang", user_data.get("langue", "en"))
 
-                # 2. Textes par défaut (Anglais)
                 titre_defaut = "🎉 Thank you for your support!"
                 desc_defaut = (
                     "Your vote on Top.gg has been successfully recorded.\n\n"
@@ -624,11 +581,9 @@ class GGEAssistantBot(commands.Bot):
                     "Happy gaming! ⚔️"
                 )
 
-                # 3. Traduction via ta fonction t()
                 titre = t(langue, "vote_thanks_title", defaut=titre_defaut)
                 description = t(langue, "vote_thanks_desc", defaut=desc_defaut)
 
-                # 4. Envoi de l'embed
                 embed = discord.Embed(title=titre, description=description, color=discord.Color.brand_green())
                 await user.send(embed=embed)
         except Exception:
@@ -636,18 +591,13 @@ class GGEAssistantBot(commands.Bot):
 
         return web.Response(status=200, text="OK")
 
-    # ==========================================
-    # 🔄 TÂCHE : SYNCHRONISATION DES VOTES (12H)
-    # ==========================================
     @tasks.loop(hours=12)
     async def sync_topgg_votes_task(self):
         VOTES_FILE = JOUEURS_DIR / "votes.json"
 
-        # Si pas de token, on annule
         if not getattr(self, "topgg_token", None):
             return
 
-        # 🟢 1. REQUÊTE DIRECTE À L'API (Format v1)
         headers = {"Authorization": f"Bearer {self.topgg_token}"}
         url = f"https://top.gg/api/bots/{self.user.id}/votes"
 
@@ -661,7 +611,6 @@ class GGEAssistantBot(commands.Bot):
 
                 raw_voters = await r.json()
 
-                # Extraction ultra-robuste des IDs
                 for v in raw_voters:
                     if isinstance(v, dict):
                         recent_voters_ids.append(str(v.get("id", "")))
@@ -674,7 +623,6 @@ class GGEAssistantBot(commands.Bot):
             logger.error(f"❌ [Top.gg] Erreur de requête aiohttp : {e}")
             return
 
-        # 🟢 2. GESTION DU FICHIER JSON (Ton code intact)
         votes_data = {}
         if VOTES_FILE.exists():
             try:
@@ -691,7 +639,6 @@ class GGEAssistantBot(commands.Bot):
             if datetime.fromisoformat(deadline_iso) < now:
                 keys_to_delete.append(uid)
 
-        # On utilise notre nouvelle liste d'IDs (recent_voters_ids)
         for uid in recent_voters_ids:
             if uid not in votes_data or uid in keys_to_delete:
                 votes_data[uid] = (now + timedelta(days=7)).isoformat()
@@ -715,9 +662,6 @@ class GGEAssistantBot(commands.Bot):
     async def before_sync_votes(self):
         await self.wait_until_ready()
 
-    # ==========================================
-    # 🔄 TÂCHE : SYNCHRO ET UNIFICATION DES SERVEURS (3H)
-    # ==========================================
     @tasks.loop(hours=3)
     async def update_servers_task(self):
 
@@ -777,7 +721,6 @@ class GGEAssistantBot(commands.Bot):
                                 "api_name": api_name,
                             }
 
-                    # 🔍 DÉTECTION DES NOUVEAUTÉS POUR LE WEBHOOK ADMIN
                     nouveaux_serveurs = []
                     changements_featured = []
 
@@ -790,7 +733,6 @@ class GGEAssistantBot(commands.Bot):
                                 etat = "🌟 Activées (Featured)" if new_data["featured"] else "❌ Désactivées"
                                 changements_featured.append(f"• **{name}** ➔ Fonctions avancées : {etat}")
 
-                    # On ne sauvegarde que si l'API a changé des statuts ou ajouté un serveur
                     vieilles_cles_presentes = any(
                         k in config_data for k in ["active_servers", "special_servers", "scan_minutes", "servers"]
                     )
@@ -798,7 +740,6 @@ class GGEAssistantBot(commands.Bot):
                     if nouveau_servers_info != anciennes_infos or vieilles_cles_presentes:
                         config_data["servers_info"] = nouveau_servers_info
 
-                        # Nettoyage optionnel des vieilles clés
                         config_data.pop("active_servers", None)
                         config_data.pop("special_servers", None)
                         config_data.pop("scan_minutes", None)
@@ -807,7 +748,6 @@ class GGEAssistantBot(commands.Bot):
                         if "live_api_commands" not in config_data:
                             config_data["live_api_commands"] = {"groups": ["storm", "fortress"], "specific": []}
 
-                        # On sauvegarde le fichier
                         with open(config_file, "w", encoding="utf-8") as f:
                             json.dump(config_data, f, indent=4, ensure_ascii=False)
 
@@ -815,7 +755,6 @@ class GGEAssistantBot(commands.Bot):
                             f"🔄 [XML Sync] Base de données unifiée mise à jour avec {len(nouveau_servers_info)} serveurs."
                         )
 
-                        # 📢 ENVOI DE L'ALERTE WEBHOOK ADMIN SI CHANGEMENT NOTABLE
                         if nouveaux_serveurs or changements_featured:
                             desc_parts = ["Le XML de GGE-Tracker a évolué :"]
 
@@ -852,9 +791,6 @@ class GGEAssistantBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ [XML Sync] Erreur lors de l'unification des serveurs : {e}")
 
-    # ==========================================
-    # 📈 TÂCHE : MISE À JOUR DU NOMBRE DE SERVEURS TOP.GG
-    # ==========================================
     @tasks.loop(minutes=30)
     async def post_server_count_task(self):
         if not getattr(self, "topgg_token", None):
@@ -876,10 +812,6 @@ class GGEAssistantBot(commands.Bot):
     @post_server_count_task.before_loop
     async def before_post_stats(self):
         await self.wait_until_ready()
-
-    # ==========================================
-    # 🛑 SYSTÈMES D'ALERTES ET DE GESTION D'ERREURS GLOBAUX
-    # ==========================================
 
     async def _send_system_alert(
         self, interaction: discord.Interaction, titre: str, description: str, couleur: int = 0xFF0000
@@ -904,7 +836,7 @@ class GGEAssistantBot(commands.Bot):
         if not webhook_url or webhook_url.startswith("https://discord.com/api/webhooks/TON/"):
             return
 
-        embed = discord.Embed(title=titre, description=description, color=0x8B0000)  # Rouge Sombre
+        embed = discord.Embed(title=titre, description=description, color=0x8B0000)
         embed.set_footer(text="GGE Assistant - Rapport de Crash Automatique")
 
         try:
@@ -918,7 +850,6 @@ class GGEAssistantBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Erreur critique du Webhook de Crash Background : {e}")
 
-    # --- LE FILET DE SÉCURITÉ #1 : ERREURS D'ÉVÉNEMENTS (on_message, on_guild_join, etc.) ---
     async def on_error(self, event_method: str, *args, **kwargs):
         """Capture et signale automatiquement toutes les erreurs survenant dans un événement du bot."""
         exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -926,7 +857,6 @@ class GGEAssistantBot(commands.Bot):
 
         logger.error(f"❌ Erreur globale dans l'événement '{event_method}':\n{tb_str}")
 
-        # Tronquer le traceback si trop long pour Discord (limite 4096 caractères pour la description)
         tb_str_short = tb_str[-2000:] if len(tb_str) > 2000 else tb_str
 
         self.loop.create_task(
@@ -938,7 +868,7 @@ class GGEAssistantBot(commands.Bot):
 
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError):
         """Le filet de sécurité #3 : Pour tes commandes d'administration classiques (!commande)."""
-        # On ignore les erreurs bêtes (commande inexistante)
+
         if isinstance(error, commands.CommandNotFound):
             return
 
@@ -954,7 +884,6 @@ class GGEAssistantBot(commands.Bot):
             )
         )
 
-    # --- LE FILET DE SÉCURITÉ #2 : ERREURS DE COMMANDES SLASH (/help, /player, etc.) ---
     async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         """Capture et signale automatiquement les plantages lors de l'exécution d'une commande Slash."""
         tb_str = "".join(traceback.format_exception(type(error), error, error.__traceback__))
@@ -974,7 +903,6 @@ class GGEAssistantBot(commands.Bot):
             )
         )
 
-        # Informer poliment l'utilisateur que ça a cassé, si possible
         try:
             msg = "⚠️ Aïe ! Une erreur interne a fait planter cette commande. Mon créateur vient de recevoir le rapport de crash et va corriger ça au plus vite."
             if interaction.response.is_done():
@@ -988,7 +916,6 @@ class GGEAssistantBot(commands.Bot):
         if interaction.type == discord.InteractionType.autocomplete:
             return True
 
-        # --- BYPASS : Le créateur a toujours accès au reste ---
         if interaction.user.id == MON_ID_DISCORD and getattr(self, "bypass_createur", True):
             return True
 
@@ -998,39 +925,33 @@ class GGEAssistantBot(commands.Bot):
 
         langue, serveur = await get_server_config(interaction)
 
-        # --- 0. BOUCLIER ANTI-SPAM (RAM) ---
         import time
 
         if not hasattr(self, "_spam_cache"):
             self._spam_cache = {}
 
-        # Le créateur (toi) n'est jamais bloqué par l'anti-spam
         if interaction.user.id != MON_ID_DISCORD:
             user_id = interaction.user.id
             now = time.time()
 
-            # On conserve uniquement les commandes lancées dans les 10 dernières secondes
             self._spam_cache[user_id] = [t for t in self._spam_cache.get(user_id, []) if now - t < 10]
             self._spam_cache[user_id].append(now)
 
-            # Si plus de 6 commandes en 10 secondes = SPAM
             if len(self._spam_cache[user_id]) > 6:
-                if len(self._spam_cache[user_id]) == 7:  # On alerte une seule fois pour ne pas se spammer soi-même
+                if len(self._spam_cache[user_id]) == 7:
                     msg = t(langue, "err_spam", defaut="⚠️ Tu vas trop vite ! Patiente quelques secondes.")
                     await interaction.response.send_message(msg, ephemeral=True)
 
-                    # 🚨 ALERTE WEBHOOK : Détection de spam
                     self.loop.create_task(
                         self._send_system_alert(
                             interaction,
                             "⚠️ Alerte Spam",
                             f"{interaction.user.mention} a lancé trop de commandes en moins de 10 secondes (`/{cmd_name}`).",
-                            0xFFA500,  # Orange
+                            0xFFA500,
                         )
                     )
-                return False  # On bloque silencieusement les requêtes suivantes
+                return False
 
-        # --- 1. SYSTÈME DE LOGS ---
         try:
             if interaction.type == discord.InteractionType.application_command:
                 lieu = interaction.guild.name if interaction.guild else "Message Privé"
@@ -1056,16 +977,13 @@ class GGEAssistantBot(commands.Bot):
                 )
             )
 
-        # --- 2. VÉRIFICATION DE LA CONFIGURATION (AVEC CACHE RAM) ---
         commandes_libres = ["setup", "help", "contact", "changelog"]
 
         if cmd_name not in commandes_libres:
             config_ok = False
 
-            # On l'importe ICI, à la volée, pour avoir la valeur la plus récente !
             from utils import USERS_CONFIG_CACHE
 
-            # Vérification ultra-rapide en RAM
             if USERS_CONFIG_CACHE and str(interaction.user.id) in USERS_CONFIG_CACHE:
                 config_ok = True
 
@@ -1079,7 +997,6 @@ class GGEAssistantBot(commands.Bot):
                     await interaction.response.send_message(msg, ephemeral=True)
                 return False
 
-        # --- 2.5. VÉRIFICATION DES COMMANDES STRICTEMENT PRIVÉES (DM ONLY) ---
         commandes_privees = [
             "fortress",
             "fortress scan",
@@ -1108,7 +1025,6 @@ class GGEAssistantBot(commands.Bot):
                 await interaction.response.send_message(msg, ephemeral=True)
             return False
 
-        # --- 2.6. VÉRIFICATION DES COMMANDES STRICTEMENT SERVEUR (GUILD ONLY) ---
         commandes_serveur = [
             "calendar",
             "calendar setup",
@@ -1132,7 +1048,6 @@ class GGEAssistantBot(commands.Bot):
                 await interaction.response.send_message(msg, ephemeral=True)
             return False
 
-        # --- 3. VÉRIFICATION DES SERVEURS SPÉCIAUX (COMPTE ESPION REQUIS) ---
         try:
             import json
 
@@ -1172,7 +1087,6 @@ class GGEAssistantBot(commands.Bot):
                 )
             )
 
-        # --- 4. MAINTENANCE GLOBALE ---
         if self.maintenance_mode:
             if interaction.type == discord.InteractionType.application_command:
                 msg = t(
@@ -1183,12 +1097,10 @@ class GGEAssistantBot(commands.Bot):
                 await interaction.response.send_message(msg, ephemeral=True)
             return False
 
-        # --- 5. CHARGEMENT DES RÈGLES DE BANS ---
         blocks_data = await load_blocks_async()
         global_cmds = blocks_data.get("global_commands", {})
         blocked_users = blocks_data.get("blocked_users", {})
 
-        # --- 6. BLOCAGE COMMANDE GLOBALE ---
         if cmd_name in global_cmds:
             if interaction.type == discord.InteractionType.application_command:
                 reason = global_cmds[cmd_name]
@@ -1198,7 +1110,6 @@ class GGEAssistantBot(commands.Bot):
                 await interaction.response.send_message(msg, ephemeral=True)
             return False
 
-        # --- 7. BLOCAGE UTILISATEUR SPÉCIFIQUE ---
         user_id_str = str(interaction.user.id)
         if user_id_str in blocked_users:
             user_blocks = blocked_users[user_id_str]
@@ -1211,13 +1122,12 @@ class GGEAssistantBot(commands.Bot):
                     )
                     await interaction.response.send_message(msg, ephemeral=True)
 
-                    # 🚨 ALERTE WEBHOOK : Tentative de contournement ou forcing
                     self.loop.create_task(
                         self._send_system_alert(
                             interaction,
                             "🛑 Intrusion bloquée (Ban ALL)",
                             f"Un utilisateur banni a tenté de forcer le passage sur `/{cmd_name}`.\nRaison du ban : {reason}",
-                            0x8B0000,  # Rouge sombre
+                            0x8B0000,
                         )
                     )
                 return False
@@ -1233,7 +1143,6 @@ class GGEAssistantBot(commands.Bot):
                     )
                     await interaction.response.send_message(msg, ephemeral=True)
 
-                    # 🚨 ALERTE WEBHOOK : Utilisateur banni d'une commande
                     self.loop.create_task(
                         self._send_system_alert(
                             interaction,
@@ -1271,8 +1180,6 @@ class GGEAssistantBot(commands.Bot):
 
 bot = GGEAssistantBot()
 
-# ===========================================
-# 🚀 DÉMARRAGE
-# ===========================================
+
 if __name__ == "__main__":
     bot.run(TOKEN)

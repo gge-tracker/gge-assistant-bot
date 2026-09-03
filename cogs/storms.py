@@ -73,9 +73,6 @@ def get_isle_name(isle_id, langue):
     return f"{name} ({res_data['qty']})"
 
 
-# ==========================================
-# 🎛️ COMPOSANT UI : VUES LOCALES DE PAGINATION
-# ==========================================
 class RefreshOnlyView(discord.ui.View):
     def __init__(self, callback_func, langue="fr", timeout=3600):
         super().__init__(timeout=timeout)
@@ -153,12 +150,8 @@ class StormsCog(commands.Cog):
 
         self.active_alerts = []
 
-    # Création du groupe de commande principal /storm
     storm_group = app_commands.Group(name="storm", description="Commands for the Storm Islands event")
 
-    # ========================================================
-    # ⚔️ COMMANDE : /storm forts
-    # ========================================================
     @storm_group.command(name="forts", description="Search for storm forts based on your criteria")
     @app_commands.choices(
         availability=[
@@ -330,9 +323,6 @@ class StormsCog(commands.Cog):
 
         await fetch_and_build_view(interaction, is_refresh=False)
 
-    # ========================================================
-    # 🏝️ COMMANDE : /storm isles
-    # ========================================================
     @storm_group.command(name="isles", description="Search for resource islands in the Storm Islands")
     @app_commands.choices(
         status=[
@@ -484,9 +474,6 @@ class StormsCog(commands.Cog):
 
         await fetch_and_build_view(interaction, is_refresh=False)
 
-    # ========================================================
-    # 🕵️‍♂️ COMMANDE : /storm occupier
-    # ========================================================
     @storm_group.command(name="occupier", description="List all islands currently held by a specific player")
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.describe(player="Exact player name")
@@ -524,7 +511,6 @@ class StormsCog(commands.Cog):
                     else await current_inter.followup.send(msg)
                 )
 
-            # --- PAGINATION ---
             embeds = []
             items_par_page = 20
             total_pages = (len(isles) - 1) // items_par_page + 1
@@ -555,7 +541,6 @@ class StormsCog(commands.Cog):
                     res_nom = get_isle_name(isle.get("isle_id"), langue)
                     lignes_description.append(f"{{e_compass}} `({x}:{y})` | {res_nom}")
 
-                # On ajoute toutes les îles à la description, puis la ligne de mise à jour à la fin
                 embed.description += "\n".join(lignes_description) + "\n" + last_update
                 await setup_embed_footer(embed, interaction, langue)
                 embeds.append(embed)
@@ -584,9 +569,6 @@ class StormsCog(commands.Cog):
 
         await fetch_and_build_view(interaction, is_refresh=False)
 
-    # ========================================================
-    # 📡 COMMANDE : /storm status
-    # ========================================================
     @storm_group.command(name="status", description="Displays the freshness state of the Storm Islands map scan")
     async def storm_status(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
@@ -605,7 +587,6 @@ class StormsCog(commands.Cog):
                 )
             data = await r.json()
 
-        # 1. Parsing de la date du dernier scan
         last_scan = data.get("last_scan_at", "")
         try:
             ts_scan = int(datetime.fromisoformat(last_scan.replace("Z", "+00:00")).timestamp())
@@ -613,11 +594,10 @@ class StormsCog(commands.Cog):
         except:
             scan_str = t(langue, "storm_status_unknown", defaut="Unknown")
 
-        # 2. Parsing de la date de début de saison
         season_start = data.get("season_started_at", "")
         try:
             ts_season = int(datetime.fromisoformat(season_start.replace("Z", "+00:00")).timestamp())
-            season_str = f"<t:{ts_season}:D>"  # Format date courte Discord (ex: 1 August 2026)
+            season_str = f"<t:{ts_season}:D>"
         except:
             season_str = t(langue, "storm_status_unknown", defaut="Unknown")
 
@@ -647,9 +627,6 @@ class StormsCog(commands.Cog):
         await setup_embed_footer(embed, interaction, langue)
         await interaction.followup.send(embed=embed)
 
-    # ========================================================
-    # ⚙️ COMMANDE : /storm setup
-    # ========================================================
     @storm_group.command(name="setup", description="Configure automatic alerts for respawning islands")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
@@ -752,7 +729,6 @@ class StormsCog(commands.Cog):
                 servers_to_check[gge_server] = []
             servers_to_check[gge_server].append((guild_id_str, config))
 
-        # 1️⃣ Mémoire : Identifier les serveurs qui ont des îles "Apparues" en attente de capture
         servers_with_spawned = {
             alert["gge_server"]
             for alert in self.active_alerts
@@ -763,11 +739,9 @@ class StormsCog(commands.Cog):
         total_annoncailles = 0
         occupied_isles_by_server = {}
 
-        # 2️⃣ Fetch API : On récupère les respawns et les occupations intelligemment
         for gge_server, guilds_list in servers_to_check.items():
             headers = await get_api_headers(custom_server=gge_server)
 
-            # A) Îles en phase de Respawn (filterByState=3)
             params_respawning = {"size": 4000, "filterByState": 3}
             isles_respawning = []
             try:
@@ -780,7 +754,6 @@ class StormsCog(commands.Cog):
             except Exception as e:
                 logger.error(f"❌ [Storm Alerts] Erreur API Respawning pour {gge_server} : {e}")
 
-            # B) Îles Occupées (filterByState=2) - UNIQUEMENT si on en a besoin (économie de requêtes)
             if gge_server in servers_with_spawned:
                 params_occupied = {"size": 4000, "filterByState": 2}
                 try:
@@ -796,7 +769,6 @@ class StormsCog(commands.Cog):
                 except Exception as e:
                     logger.error(f"❌ [Storm Alerts] Erreur API Occupied pour {gge_server} : {e}")
 
-            # C) Création des nouvelles alertes pour les îles qui vont spawn
             isles_to_announce = []
             for isle in isles_respawning:
                 isle_id = isle.get("isle_id")
@@ -868,7 +840,7 @@ class StormsCog(commands.Cog):
 
                     try:
                         sent_msg = await channel.send(content=msg_content, embed=embed)
-                        # Ajout des informations vitales pour retrouver l'île plus tard
+
                         self.active_alerts.append(
                             {
                                 "message": sent_msg,
@@ -887,7 +859,6 @@ class StormsCog(commands.Cog):
                     except discord.HTTPException as e:
                         logger.error(f"❌ [Storm Alerts] Erreur réseau Discord : {e}")
 
-        # 3️⃣ Cycle de vie des alertes (Pending ➔ Spawned ➔ Captured)
         alerts_to_keep = []
         for alert in self.active_alerts:
             status = alert.get("status", "pending")
@@ -896,12 +867,10 @@ class StormsCog(commands.Cog):
             emb = alert["embed"]
             msg = alert["message"]
 
-            # Phase 1 : Pas encore apparue, on la garde en attente
             if now < ts:
                 alerts_to_keep.append(alert)
                 continue
 
-            # Phase 2 : Vient d'apparaître ! (Vert)
             if status == "pending":
                 alert["status"] = "spawned"
                 emb.color = discord.Color.green()
@@ -925,7 +894,6 @@ class StormsCog(commands.Cog):
                 alerts_to_keep.append(alert)
                 continue
 
-            # Phase 3 : Était déjà apparue, on vérifie si un joueur l'a capturée (Rouge)
             if status == "spawned":
                 gge_server = alert["gge_server"]
                 x, y = alert["x"], alert["y"]
@@ -934,7 +902,6 @@ class StormsCog(commands.Cog):
                 isle_data = occ_dict.get((x, y))
 
                 if isle_data:
-                    # ✅ Un joueur l'a prise !
                     occupier = isle_data.get("occupier_name") or "Unknown"
                     alliance = isle_data.get("occupier_alliance_name") or "None"
 
@@ -959,15 +926,13 @@ class StormsCog(commands.Cog):
                         await msg.edit(embed=emb)
                     except:
                         pass
-                    # On ne l'ajoute plus à alerts_to_keep : le cycle de cette alerte est terminé.
+
                 else:
-                    # Toujours libre sur la carte. On la surveille pendant 2 heures max (7200 secondes).
                     if now <= ts + 7200:
                         alerts_to_keep.append(alert)
 
         self.active_alerts = alerts_to_keep
 
-        # Sauvegarde finale
         if modifie:
             if len(notified) > 200:
                 notified = notified[-200:]
@@ -981,9 +946,6 @@ class StormsCog(commands.Cog):
     async def before_storm_alert_loop(self):
         await self.bot.wait_until_ready()
 
-    # ========================================================
-    # 🛑 COMMANDE : /storm stop
-    # ========================================================
     @storm_group.command(name="stop", description="Stop automatic alerts for respawning islands")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
@@ -1017,9 +979,6 @@ class StormsCog(commands.Cog):
             )
             await interaction.followup.send(msg)
 
-    # ==========================================
-    # 🛡️ LEURRES POUR LE SCRIPT DE TRADUCTION
-    # ==========================================
     def _dummy_i18n():
         langue = "fr"
         t(langue, "storm_res_aqua")

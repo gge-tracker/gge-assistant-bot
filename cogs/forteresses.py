@@ -82,16 +82,12 @@ class FortressActionView(discord.ui.View):
                 pass
 
 
-# ==========================================
-# 🏰 LE COG FORTERESSES
-# ==========================================
 @app_commands.allowed_contexts(guilds=False, dms=True, private_channels=True)
 class ForteressesCog(commands.GroupCog, group_name="fortress", group_description="Fortress Radar (Sands, Ice, Peaks)"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         super().__init__()
 
-        # 🎨 PALETTE VERT RADAR / EMERAUDE
         self.clr_activation = discord.Color.from_rgb(180, 238, 180)
         self.clr_attente = discord.Color.from_rgb(255, 195, 160)
         self.base_api = "https://api.gge-tracker.com/api/v1"
@@ -118,9 +114,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             pass
         return "❓ Inconnu"
 
-    # ==========================================
-    # 🧠 MÉTHODE : VÉRIFICATION EN DIRECT
-    # ==========================================
     async def verify_and_send(
         self, interaction: discord.Interaction, cibles: list, joueur: str, serveur: str, langue: str
     ):
@@ -203,9 +196,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         await setup_embed_footer(embed, interaction, langue)
         await interaction.followup.send(embed=embed, ephemeral=False)
 
-    # ==========================================
-    # 🧠 MÉTHODE : RELANCE (LES 10 SUIVANTES)
-    # ==========================================
     async def relaunch_scan(self, interaction: discord.Interaction, user_id: str, langue: str):
         data = await load_dungeons_async()
         if user_id not in data.get("sessions", {}):
@@ -256,9 +246,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             await setup_embed_footer(embed_attente, interaction, langue)
             await interaction.followup.send(embed=embed_attente, ephemeral=False)
 
-    # ==========================================
-    # 🗺️ TRI INTELLIGENT (CORRESPONDANCE X/Y)
-    # ==========================================
     def chain_targets_by_coordinates(self, cibles: list) -> list:
         if not cibles:
             return []
@@ -271,7 +258,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
         result = []
         for kid, items in by_kid.items():
-            # Initier la chaîne avec la cible la plus proche du joueur
             items.sort(key=lambda c: c.get("dist", 99999))
             chain = [items.pop(0)]
 
@@ -282,7 +268,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
                 for i, candidate in enumerate(items):
                     dist_sq = (current["x"] - candidate["x"]) ** 2 + (current["y"] - candidate["y"]) ** 2
-                    # 💡 LE CŒUR DU TRI : Bonus massif si l'axe X ou Y correspond !
+
                     if candidate["x"] == current["x"] or candidate["y"] == current["y"]:
                         score = dist_sq
                     else:
@@ -298,9 +284,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
         return result
 
-    # ==========================================
-    # 🧠 LE MOTEUR DE RECHERCHE UNIFIÉ
-    # ==========================================
     async def fetch_cibles(
         self,
         joueur: str,
@@ -325,7 +308,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         cibles_moins_5min = []
         cibles_moins_1h = []
 
-        # 🟢 LA REQUÊTE GLOBALE UNIQUE
         url = f"{self.base_api}/dungeons?page=1&size=2000&filterByKid={kids_str}&filterByPlayerName={safe_joueur}&nearPlayerName={safe_joueur}"
 
         try:
@@ -348,7 +330,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
                         x, y = d.get("position_x"), d.get("position_y")
 
-                        # ⏱️ Calcul infaillible du cooldown
                         cd_until = d.get("effective_cooldown_until", "")
                         cd_secondes = 0
                         if cd_until:
@@ -387,14 +368,10 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         except Exception as e:
             logger.error(f"❌ [FORTERESSES] Erreur API Globale: {e}")
 
-        # 🟢 APPEL DU META-SCAN
         last_scan_str = await self.fetch_meta_scan(session, headers)
         lbl_last_scan = t(langue, "fort_lbl_last_scan", defaut="Dernier scan API :")
         txt_last_scan = f"\n*{DICT_EMOJIS.get('e_std_satellite_antenna', '📡')} {lbl_last_scan} {last_scan_str}*"
 
-        # ------------------------------------------------------------------
-        # 🟢 CONSTRUCTION DES RÉSULTATS : CIBLES DISPONIBLES
-        # ------------------------------------------------------------------
         if cibles_dispo:
             cibles_dispo.sort(key=lambda c: c["dist"] if c["dist"] != -1.0 else 99999)
             vivier = cibles_dispo[:30]
@@ -443,9 +420,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             await setup_embed_footer(embed, None, langue)
             return sessions_modifiees, embed, cibles_a_envoyer
 
-        # ------------------------------------------------------------------
-        # ⏳ CONSTRUCTION DES RÉSULTATS : CIBLES EN COOLDOWN
-        # ------------------------------------------------------------------
         cibles_finales = []
         embed_color = discord.Color.gold()
         embed_title = ""
@@ -526,9 +500,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
         return False, None, []
 
-    # ==========================================
-    # 🟢 COMMANDE : SCAN
-    # ==========================================
     @app_commands.command(name="scan", description="Activates the automatic radar of the free fortresses")
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.describe(
@@ -666,9 +637,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             await interaction.followup.send(embed=embed_attente, ephemeral=False)
         await prompt_vote_if_lucky(interaction, probability_percent=15, langue=langue)
 
-    # ==========================================
-    # 🔴 COMMANDE : STOP
-    # ==========================================
     @app_commands.command(name="stop", description="Stop your fortress scanning session")
     async def f_stop(self, interaction: discord.Interaction):
         try:
@@ -699,9 +667,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             )
         await prompt_vote_if_lucky(interaction, probability_percent=15, langue=langue)
 
-    # ==========================================
-    # 🛰️ LA TÂCHE DE FOND
-    # ==========================================
     @tasks.loop(minutes=1)
     async def dungeon_spy_task(self):
         try:
@@ -785,9 +750,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         except Exception as e:
             logger.error(f"❌ [FORTERESSES CRASH] : {traceback.format_exc()}")
 
-    # ==========================================
-    # 📜 Forteresses : HISTORY
-    # ==========================================
     @app_commands.command(name="history", description="View a player's fortress attack history (up to 365 days)")
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -836,7 +798,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
                 )
             )
 
-        # On interroge l'API pour l'historique sur 365 jours
         url_history = f"{self.base_api}/dungeons/player/{player_id}?lastDays=365"
         try:
             async with self.bot.session.get(url_history, headers=headers, timeout=12) as r:
@@ -866,7 +827,6 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
                 )
             )
 
-        # Tri pour avoir les plus récents en haut
         dungeons.sort(key=lambda x: x.get("attacked_at", ""), reverse=True)
 
         latest_attack_ts = int(discord.utils.utcnow().timestamp())
@@ -919,13 +879,10 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             ),
         )
 
-        # ---------------------------------------------------------
-        # LOGIQUE : GROUPEMENT DES DONNÉES JOUR PAR JOUR
-        # ---------------------------------------------------------
         daily_stats = {}
         for d in dungeons:
             kid = d.get("kid")
-            dt_str = d.get("attacked_at", "")[:10]  # On extrait "YYYY-MM-DD"
+            dt_str = d.get("attacked_at", "")[:10]
 
             if not dt_str or not kid:
                 continue
@@ -935,12 +892,11 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
             daily_stats[dt_str][kid] += 1
 
-            # Calcul des rubis de la frappe
             rubies_gained = {1: 280, 2: 50, 3: 370}.get(kid, 0)
             daily_stats[dt_str]["rubies"] += rubies_gained
 
         lignes = []
-        # On trie les jours du plus récent au plus ancien
+
         for day_str, stats in sorted(daily_stats.items(), reverse=True):
             try:
                 day_obj = datetime.strptime(day_str, "%Y-%m-%d")
@@ -962,7 +918,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             lignes.append(f"• **{day_fmt}** : {texte_royaumes} ➔ **{jour_rubis}** {DICT_EMOJIS.get('e_ruby', '💎')}")
 
         embeds = []
-        chunk_size = 5  # On peut mettre 5 lignes par page car elles sont plus courtes
+        chunk_size = 5
         nb_pages = max(1, (len(lignes) - 1) // chunk_size + 1)
 
         title = t(

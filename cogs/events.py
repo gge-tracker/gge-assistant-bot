@@ -148,12 +148,11 @@ class AquamarineSelectView(discord.ui.View):
         self.gt_am = gt_am
         self.message = None
 
-        # --- Création des options du menu déroulant ---
         options = []
         for i, m_key in enumerate(sorted_months[:25]):
             annee, mois_num = m_key.split("-")
             nom_mois = f"{get_month_name(mois_num, langue)} {annee}"
-            # Emoji calendrier natif pour la sécurité du select
+
             options.append(discord.SelectOption(label=nom_mois, value=m_key, default=(i == 0), emoji="📅"))
 
         placeholder_txt = t(langue, "ev_aqua_select_placeholder", defaut="Sélectionnez un mois...")
@@ -303,9 +302,6 @@ class EventsCog(commands.Cog):
     async def cog_unload(self):
         self.rival_check_task.cancel()
 
-    # =========================================
-    # COMMANDE : EVENT PLAYER
-    # ==========================================
     @app_commands.command(name="event_player", description="View a player's latest score or history")
     @app_commands.autocomplete(event_name=event_autocomplete)
     @app_commands.autocomplete(player=joueur_autocomplete)
@@ -853,9 +849,6 @@ class EventsCog(commands.Cog):
             await interaction.followup.send(embed=embed)
             await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
-    # =========================================
-    # COMMANDE : EVENT ALLIANCE
-    # =========================================
     @app_commands.command(name="event_alliance", description="Ranking and participation of an alliance in an event")
     @app_commands.autocomplete(event_name=event_alliance_autocomplete)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
@@ -946,9 +939,6 @@ class EventsCog(commands.Cog):
             view.message = await interaction.followup.send(embed=embeds[0], view=view, wait=True)
         await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
-    # ==========================================
-    # 🔗 LIAISON DU COMPTE DISCORD
-    # ==========================================
     @app_commands.command(name="link_account", description="Link your Discord account to your GGE username")
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def link_account(self, interaction: discord.Interaction, player: str):
@@ -964,9 +954,6 @@ class EventsCog(commands.Cog):
         )
         await interaction.response.send_message(msg, ephemeral=True)
 
-    # ==========================================
-    # 🕵️ GROUPE /RIVAL
-    # ==========================================
     rival_group = app_commands.Group(
         name="rival",
         description="Competition Radar (MP only)",
@@ -1076,9 +1063,6 @@ class EventsCog(commands.Cog):
             await save_rivals_async(data)
             await interaction.response.send_message(t(langue, "ev_rival_stopped", defaut="🛑 Radar désactivé."))
 
-    # ==========================================
-    # 🛰️ LE SATELLITE RIVAL
-    # ==========================================
     @tasks.loop(minutes=1)
     async def rival_check_task(self):
         try:
@@ -1238,9 +1222,6 @@ class EventsCog(commands.Cog):
         except Exception as e:
             logger.error(f"❌ [RIVAL TASK CRASH] : {e}")
 
-    # ========================================================
-    # GROUPE DE COMMANDES : ROUE DE LA FORTUNE (WOA)
-    # ========================================================
     woa = app_commands.Group(name="woa", description="Analysis and statistics of the Wheel of Affluence")
 
     @woa.command(name="history", description="View the history of tickets spent by a player")
@@ -1473,9 +1454,6 @@ class EventsCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur : {e}"))
 
-    # ========================================================
-    # 🏆 GROUPE DE COMMANDES RACINE : LEADERBOARD
-    # ========================================================
     leaderboard = app_commands.Group(name="leaderboard", description="General server rankings")
 
     @leaderboard.command(name="woa", description="Displays the Top 100 from the latest Wheel of Affluence")

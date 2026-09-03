@@ -37,7 +37,7 @@ class CalendarNavView(discord.ui.View):
         self.embeds = embeds_dict
         self.current_page = current_page
         self.langue = langue
-        self.message = None  # Sert à garder la trace du message pour le timeout
+        self.message = None
 
         self.btn_main = discord.ui.Button(
             label=t(langue, "cal_btn_main", defaut="Résumé Complet"),
@@ -147,7 +147,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             with open(MAPPING_FILE, encoding="utf-8") as f:
                 mapping = json.load(f)
 
-            # Convertir les couleurs hexadécimales string ("0xBF0000") en entiers pour Discord
             for key, data in mapping.items():
                 if isinstance(data.get("color"), str) and data["color"].startswith("0x"):
                     data["color"] = int(data["color"], 16)
@@ -317,9 +316,7 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
         data = await load_calendrier_async()
         guild_id = str(interaction.guild_id)
 
-        # On vérifie s'il y a bien un salon configuré
         if guild_id in data.get("guilds", {}) and data["guilds"][guild_id].get("channel_id") is not None:
-            # On supprime juste l'ID du salon (les alliances suivies sont conservées)
             data["guilds"][guild_id]["channel_id"] = None
             await save_calendrier_async(data)
 
@@ -333,9 +330,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             msg_fail = t(langue, "cal_stop_fail", defaut="{e_warning} Le calendrier n'était pas activé sur ce serveur.")
             await interaction.followup.send(msg_fail)
 
-    # ==========================================
-    # 📆 COMMANDE CURRENT (VUE DAMIER + IDS + TRI)
-    # ==========================================
     @app_commands.command(name="current", description="Displays the complete calendar of events")
     async def c_current(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
@@ -353,7 +347,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
 
         maintenant = datetime.now()
 
-        # 1. L'ordre d'affichage désiré
         event_order = [
             "samurai invasion",
             "nomad invasion",
@@ -369,20 +362,17 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             "imperial patronage",
         ]
 
-        # 2. Quels sont les événements d'alliance ?
         alliance_events_keys = ["grand tournament", "rift raid", "beyond the horizon"]
 
-        # Structure : { "Nom de l'onglet": { "Titre de la carte": ["ligne 1", "ligne 2"] } }
         onglets_data = {
-            "main": {},  # Absolument tout
-            "future": {},  # À venir dans 7j
-            "alliance": {},  # Seulement Tournoi, Faille, Horizon
+            "main": {},
+            "future": {},
+            "alliance": {},
         }
 
         events_tries = sorted(events, key=lambda x: x["start"])
 
         for ev in events_tries:
-            # Filtre pour ignorer le passé
             if ev["end"] < maintenant:
                 continue
 
@@ -395,25 +385,21 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
 
             nom_event_traduit = t(langue, meta["name_key"], defaut=meta["name_default"])
 
-            # Application de la traduction si l'émoji est une balise dynamique
             emoji_clean = t(langue, f"emo_{ev['key']}", defaut=meta["emoji"]) if "{" in meta["emoji"] else meta["emoji"]
 
             titre_carte = f"{emoji_clean} **{nom_event_traduit}**"
 
             ligne_date = f"• <t:{ts_start}:d> ➔ <t:{ts_end}:d>"
 
-            # 🟢 Onglet Main : On affiche tout !
             onglets_data["main"].setdefault(ev["key"], {"titre": titre_carte, "lignes": []})["lignes"].append(
                 ligne_date
             )
 
-            # 🛡️ Onglet Alliance : Que les 3 events choisis
             if ev["key"] in alliance_events_keys:
                 onglets_data["alliance"].setdefault(ev["key"], {"titre": titre_carte, "lignes": []})["lignes"].append(
                     ligne_date
                 )
 
-            # 🚀 Onglet Future : Uniquement ce qui commence dans le futur, max 7 jours
             if ev["start"] > maintenant and (ev["start"] - maintenant).days <= 7:
                 onglets_data["future"].setdefault(ev["key"], {"titre": titre_carte, "lignes": []})["lignes"].append(
                     ligne_date
@@ -429,7 +415,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
         )
         empty_txt = t(langue, "cal_empty_cat", defaut="*Aucun événement dans cette catégorie pour le moment.*")
 
-        # Fonction de construction de l'embed avec la limitation à 2 colonnes
         async def build_embed(titre, onglet_cle, color):
             desc = f"{texte_maj}\n\u200b"
             donnees = onglets_data[onglet_cle]
@@ -442,24 +427,20 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
 
             emb = discord.Embed(title=titre, description=desc, color=color)
 
-            # On trie les cartes selon TON ordre spécifique
             cartes_triees = []
             for key in event_order:
                 if key in donnees:
                     cartes_triees.append(donnees[key])
 
-            # Ajout de toutes les autres clés qui ne seraient pas dans ton 'event_order' (sécurité)
             for key, data in donnees.items():
                 if key not in event_order:
                     cartes_triees.append(data)
 
-            # L'ASTUCE DES DEUX COLONNES (Damier sans espace vertical)
             field_count = 0
             for carte in cartes_triees:
                 emb.add_field(name=carte["titre"], value="\n".join(carte["lignes"]), inline=True)
                 field_count += 1
 
-                # On ajoute une 3ème colonne invisible au lieu d'un saut de ligne !
                 if field_count % 2 == 0:
                     emb.add_field(name="\u200b", value="\u200b", inline=True)
 
@@ -479,9 +460,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
         view = CalendarNavView(embeds_dict, "main", langue)
         view.message = await interaction.followup.send(embed=embeds_dict["main"], view=view, wait=True)
 
-    # ==========================================
-    # 🕵️‍♂️ MOTEUR D'EXTRACTION HTML (BS4 LECTURE PLATE)
-    # ==========================================
     async def parse_live_calendar(self):
         url = "https://communityhub.goodgamestudios.com/newshube4k"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -558,23 +536,19 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             limite_retention = maintenant - timedelta(days=30)
             events_actifs = [ev for ev in getattr(self, "cached_events", []) if ev["end"] >= limite_retention]
 
-            # 🔥 NOUVEAU : Chargement de la liste noire
             data = await load_calendrier_async()
             deleted_events = data.get("deleted_events", [])
 
             if nouveaux_events:
-                # 🔥 FIX : On compare maintenant avec l'ID (plus avec la date de début)
                 ids_en_cache = {ev.get("id") for ev in events_actifs}
 
                 for nev in nouveaux_events:
                     nev_id = nev.get("id")
 
-                    # 1. Vérification Liste Noire (L'event a été supprimé via !cal_del)
                     if nev_id in deleted_events:
                         logger.info(f"🚫 [Calendrier] L'événement {nev['key']} ({nev_id}) a été ignoré (Liste Noire).")
                         continue
 
-                    # 2. Ajout si nouveau (Si l'event est modifié, son ID est en cache, donc ignoré ici)
                     if nev_id not in ids_en_cache:
                         events_actifs.append(nev)
                         ids_en_cache.add(nev_id)
@@ -603,7 +577,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             uid_start = f"{ev['key']}_{ev['start'].strftime('%Y-%m-%d')}_start"
             uid_end = f"{ev['key']}_{ev['end'].strftime('%Y-%m-%d')}_end"
 
-            # 🟢 DÉBUT D'ÉVÉNEMENT
             if maintenant >= ev["start"] and uid_start not in notified:
                 if ev["start"].date() == maintenant.date():
                     logger.info(f"🔎 [Calendrier] DÉCLENCHEMENT DÉBUT de {meta['name_default']}")
@@ -657,7 +630,6 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
                 notified.append(uid_start)
                 modifie = True
 
-            # 🔴 FIN D'ÉVÉNEMENT
             if maintenant >= ev["end"] and uid_end not in notified:
                 if ev["end"].date() == maintenant.date():
                     logger.info(f"🔎 [Calendrier] DÉCLENCHEMENT FIN de {meta['name_default']}")
