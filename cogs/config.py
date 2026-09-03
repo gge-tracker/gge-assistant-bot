@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import observability as obs
 from utils import CONFIG_DIR, clear_config_cache, get_server_config, load_configuration_async, t
 
 
@@ -152,9 +153,27 @@ class ConfigCog(commands.Cog):
         # 👤 Sauvegarde Personnelle
         user_id = str(interaction.user.id)
         data = await load_users_config()
+        old_profile = data.get(user_id) or {}
         data[user_id] = {"nom_discord": interaction.user.name, "langue": language.value, "gge_server": serveur_upper}
         await save_users_config(data)
         clear_config_cache()
+
+        # Record the profile change and refresh the user dimension
+        obs.record_guild_event(
+            "setup",
+            guild=interaction.guild,
+            user_id=interaction.user.id,
+            lang=language.value,
+            gge_server=serveur_upper,
+            old_value=f"{old_profile.get('langue', '')}/{old_profile.get('gge_server', '')}".strip("/"),
+            new_value=f"{language.value}/{serveur_upper}",
+        )
+        obs.upsert_user(
+            interaction.user.id,
+            user_name=interaction.user.name,
+            lang=language.value,
+            gge_server=serveur_upper,
+        )
 
         titre = t(language.value, "config_dm_setup_title", defaut="{e_check} Profil Configuré")
         desc = t(
