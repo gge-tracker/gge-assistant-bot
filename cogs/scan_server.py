@@ -27,6 +27,7 @@ class ScanCog(commands.Cog):
         }
         self.webhook_url = os.getenv("WEBHOOK_SCAN")
 
+        # Démarrage de la tâche planifiée ex: tous les jours à 00:30 UTC
         self.daily_scan.start()
 
     def cog_unload(self):
@@ -91,7 +92,7 @@ class ScanCog(commands.Cog):
                 async with session.get(url, headers=headers, params=params, timeout=15) as response:
                     if response.status == 200:
                         return await response.json()
-                    elif response.status == 429:
+                    elif response.status == 429:  # Too Many Requests
                         wait_time = 15 * (attempt + 1)
                         logger.warning(f"⚠️ 429 sur {server} (Page {page}). Purge API de {wait_time}s...")
                         await asyncio.sleep(wait_time)
@@ -184,6 +185,9 @@ class ScanCog(commands.Cog):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
 
+        # ==========================================
+        # SYSTÈME DE NETTOYAGE DES ANCIENS FICHIERS
+        # ==========================================
         try:
             date_dirs = sorted([d for d in server_dir.iterdir() if d.is_dir()])
 
@@ -206,6 +210,7 @@ class ScanCog(commands.Cog):
 
         try:
             async with aiohttp.ClientSession() as session:
+                # On triche un peu sur l'index (1/1) pour l'affichage des logs
                 result = await self.scan_server(session, server_name, 1, 1)
 
                 if result:
@@ -218,6 +223,7 @@ class ScanCog(commands.Cog):
             logger.error(traceback.format_exc())
             raise e
 
+    # Lancement tous les jours à 00h30 UTC
     @tasks.loop(time=time(hour=0, minute=30, tzinfo=UTC))
     async def daily_scan(self):
         logger.info("======================================================")

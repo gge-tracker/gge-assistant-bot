@@ -29,6 +29,9 @@ from utils import (
 logger = logging.getLogger("GGE_Bot")
 
 
+# ==========================================
+# LE COMPOSANT UI : VÉRIFIER & RELANCER
+# ==========================================
 class FortressActionView(discord.ui.View):
     def __init__(self, cog, user_id: str, cibles: list, joueur: str, serveur: str, langue: str = "fr"):
         super().__init__(timeout=3600)

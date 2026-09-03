@@ -66,6 +66,9 @@ def get_discord_time(iso_str, langue="fr"):
         return t(langue, "rad_time_recent", defaut="Récemment")
 
 
+# ===========================================
+# 🎛️ MENU INTERACTIF DES FILTRES JOUEURS
+# ===========================================
 class RadarSettingsView(discord.ui.View):
     def __init__(self, p_id: str, user_id: str, player_name: str, initial_prefs: dict, langue: str = "fr"):
         super().__init__(timeout=900)
@@ -110,7 +113,8 @@ class RadarSettingsView(discord.ui.View):
         )
 
     async def on_timeout(self):
-
+        # Les messages éphémères sont gérés par Discord qui désactive l'interaction après 15 min,
+        # mais vider la mémoire côté bot proprement est important.
         for child in self.children:
             child.disabled = True
 
@@ -154,6 +158,9 @@ class RadarSettingsView(discord.ui.View):
         await interaction.response.edit_message(content=msg, view=None)
 
 
+# ==========================================
+# 🎛️ MENU INTERACTIF DES FILTRES ALLIANCES
+# ==========================================
 class RadarAllianceSettingsView(discord.ui.View):
     def __init__(self, a_id: str, user_id: str, alliance_name: str, initial_prefs: dict, langue: str = "fr"):
         super().__init__(timeout=900)
@@ -219,6 +226,9 @@ class RadarAllianceSettingsView(discord.ui.View):
         await interaction.response.edit_message(content=msg, view=None)
 
 
+# ==========================================
+# 📊 MODULE COG RADAR
+# ==========================================
 @app_commands.allowed_contexts(guilds=False, dms=True, private_channels=True)
 class RadarCog(commands.GroupCog, group_name="radar", group_description="Personal War Radar"):
     def __init__(self, bot: commands.Bot):
@@ -234,6 +244,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
         self.users_lang_cache = {}
         self.users_cache_mtime = 0
 
+        # ⚡ CACHE ETAG POUR LA BETA API
         self.etags_cache = {}
         self.next_scan = {}
 
@@ -262,6 +273,9 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                 except Exception as e:
                     logger.error(f"❌ Erreur MP à {user_id} : {e}")
 
+    # ==========================================
+    # 🕵️‍♂️ COMMANDES : RADAR PLAYER
+    # ==========================================
     @app_commands.command(name="add", description="Add a player to your personal radar (Limit: 25 followed)")
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.describe(reason="Reason for surveillance")
@@ -403,6 +417,9 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
             msg = t(langue, "rad_rem_fail", j=player, defaut=f"{{e_warning}} **{player}** n'est pas dans ton radar.")
             await interaction.followup.send(msg)
 
+    # ==========================================
+    # 🛡️ COMMANDES : RADAR ALLIANCE (SOUS-GROUPE)
+    # ==========================================
     alliance_group = app_commands.Group(name="alliance", description="Manage the radar of complete alliances")
 
     @alliance_group.command(name="add", description="Add an entire alliance to your radar (Limit: 3 followed)")
@@ -567,6 +584,9 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
             )
             await interaction.followup.send(msg)
 
+    # ==========================================
+    # 📋 COMMANDE : LIST GLOBAL
+    # ==========================================
     @app_commands.command(name="list", description="Display your personal radar (Players & Alliances)")
     async def s_list(self, interaction: discord.Interaction):
         try:
@@ -678,6 +698,9 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
             await interaction.followup.send(embed=embeds[0], view=view)
         await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
+    # ==========================================
+    # 🛰️ LE SATELLITE ESPION (Tâche ETag ultra-optimisée)
+    # ==========================================
     @tasks.loop(seconds=20)
     async def radar_spy_task(self):
         try:
@@ -723,9 +746,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
             for serveur, targets in targets_by_server.items():
                 headers = await get_api_headers(custom_server=serveur)
 
+                # ==========================================
+                # --- ÉTAPE 1 : SURVEILLANCE ALLIANCES ---
+                # ==========================================
                 for a_id, a_info in targets["alliances"]:
                     cache_key = f"alli_{serveur}_{a_id}"
 
+                    # On respecte le temps de pause imposé par l'API
                     if now_ts < self.next_scan.get(cache_key, 0):
                         continue
 
@@ -739,6 +766,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                         url_alli_live = f"https://api-beta.gge-tracker.com/api/v1/alliances/id/{a_id}"
                         req_headers = headers.copy()
 
+                        # Ajout du header ETag si on l'a déjà
                         if cache_key in self.etags_cache:
                             req_headers["If-None-Match"] = self.etags_cache[cache_key]
 
@@ -751,6 +779,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                 if isinstance(max_data, list) and max_data:
                                     max_data = max_data[0]
 
+                                # 🚀 Lecture du nouveau ETag et du temps de pause
                                 polling = max_data.get("polling", {})
                                 new_etag = polling.get("etag") or r_live.headers.get("ETag")
 
@@ -964,6 +993,9 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                     except Exception as e:
                         logger.error(f"❌ [Radar Spy] Erreur analyse alliance {a_id} : {e}")
 
+                # ==========================================
+                # --- ÉTAPE 2 : ANALYSE DES JOUEURS (En vrac / Bulk) ---
+                # ==========================================
                 tracked_players = targets["players"]
                 if tracked_players:
                     cache_key_bulk = f"players_bulk_{serveur}"
@@ -975,6 +1007,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                             url_bulk = "https://api-beta.gge-tracker.com/api/v1/players"
                             req_headers = headers.copy()
 
+                            # Caching pour le bulk POST
                             if cache_key_bulk in self.etags_cache:
                                 req_headers["If-None-Match"] = self.etags_cache[cache_key_bulk]
 
@@ -984,6 +1017,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                 if r.status == 200:
                                     bulk_data_raw = await r.json()
 
+                                    # 🚀 Récupération ETag pour les joueurs
                                     polling = bulk_data_raw.get("polling", {})
                                     new_etag = str(polling.get("etag") or r.headers.get("ETag"))
                                     old_etag = self.etags_cache.get(cache_key_bulk)
@@ -994,6 +1028,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                     if new_etag != "None":
                                         self.etags_cache[cache_key_bulk] = new_etag
 
+                                    # 🛑 BOUCLIER ANTI-POST : On vérifie l'ETag nous-mêmes !
                                     if old_etag and new_etag == old_etag:
                                         pass
                                     else:
@@ -1276,12 +1311,16 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                         except Exception as e:
                             logger.error(f"❌ [Radar Spy] Erreur Bulk Players : {e}")
 
+                # ==========================================
+                # --- ÉTAPE 3 : MOUVEMENTS GLOBAUX ---
+                # ==========================================
                 cache_key_mouv = f"mouv_{serveur}"
                 if now_ts >= self.next_scan.get(cache_key_mouv, 0):
                     try:
                         url_movements = "https://api-beta.gge-tracker.com/api/v1/server/movements?page=1&castleType=1&movementType=3"
                         req_headers = headers.copy()
 
+                        # Caching pour les mouvements
                         if cache_key_mouv in self.etags_cache:
                             req_headers["If-None-Match"] = self.etags_cache[cache_key_mouv]
 
@@ -1291,6 +1330,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                             if r.status == 200:
                                 data_mouv = await r.json()
 
+                                # 🚀 Récupération ETag pour les mouvements
                                 polling = data_mouv.get("polling", {})
                                 new_etag = polling.get("etag") or r.headers.get("ETag")
 
