@@ -1350,7 +1350,6 @@ class AdminCog(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command(name="export_app_emojis", hidden=True)
-    @commands.is_owner()
     async def export_app_emojis(self, ctx):
         await ctx.send("📥 Récupération des émojis d'application depuis le portail développeur...")
 
