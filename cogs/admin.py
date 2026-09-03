@@ -103,7 +103,8 @@ class AdminCog(commands.Cog):
             value="`!emojis_list` ➔ Liste tous les émojis utilisés.\n"
             "`!replace_raw [old] [new]` ➔ Remplace un texte/émoji dans tout le code.\n"
             "`!check_emojis` ➔ Détécteur d'émojis fantômes dans le code.\n"
-            "`!check_bad_emojis` ➔ Détécteur de syntaxe d'émojis cassée.",
+            "`!check_bad_emojis` ➔ Détécteur de syntaxe d'émojis cassée.\n"
+            "`!export_app_emojis` ➔ Télécharge tous les émojis dans le dev bot dans le fichier assets.",
             inline=False,
         )
 
@@ -1311,6 +1312,39 @@ class AdminCog(commands.Cog):
 
         await msg_wait.delete()
         await ctx.send(embed=embed)
+
+    @commands.command(name="export_app_emojis", hidden=True)
+    @commands.is_owner()
+    async def export_app_emojis(self, ctx):
+        await ctx.send("📥 Récupération des émojis d'application depuis le portail développeur...")
+
+        dossier_destination = "assets/emojis"
+        os.makedirs(dossier_destination, exist_ok=True)
+
+        try:
+            app_emojis = await self.bot.fetch_application_emojis()
+        except AttributeError:
+            return await ctx.send(
+                "❌ Erreur : Ta version de discord.py est trop ancienne pour cette fonctionnalité (nécessite la version 2.4+)."
+            )
+
+        if not app_emojis:
+            return await ctx.send("⚠️ Aucun émoji d'application n'a été trouvé.")
+
+        compteur = 0
+        for emoji in app_emojis:
+            extension = "gif" if emoji.animated else "png"
+            chemin_fichier = f"{dossier_destination}/{emoji.name}.{extension}"
+
+            try:
+                await emoji.save(chemin_fichier)
+                compteur += 1
+            except Exception as e:
+                print(f"Erreur avec l'émoji {emoji.name} : {e}")
+
+        await ctx.send(
+            f"✅ Exportation terminée ! `{compteur}` émojis d'application ont été sauvegardés dans `{dossier_destination}/`."
+        )
 
     @commands.command(name="vigi_add", hidden=True)
     async def vigi_add(self, ctx, *, cible: str):
