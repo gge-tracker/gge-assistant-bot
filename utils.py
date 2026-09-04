@@ -92,7 +92,11 @@ async def get_api_headers(interaction: discord.Interaction = None, custom_server
     elif interaction:
         _, server = await get_server_config(interaction)
 
-    return {"accept": "application/json", "gge-server": server, "User-Agent": "Mozilla/5.0 GGE-Assistant/2.0"}
+    return {
+        "Accept": "application/json",
+        "gge-server": server,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GGE-Assistant/3.0 (Async)",
+    }
 
 
 try:

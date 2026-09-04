@@ -17,6 +17,7 @@ import discord
 from aiohttp import web
 from discord.ext import commands, tasks
 
+import observability as obs
 from utils import (
     BOT_VERSION,
     CACHE,
@@ -59,6 +60,9 @@ logger.addHandler(file_handler)
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
+
+# Mirror the log stream above into ClickHouse (stays inert when CLICKHOUSE_HOST is unset)
+obs.setup(logger, bot_version=BOT_VERSION)
 
 print(
     "\n" + "█" * 60 + "\n" + "█" + " " * 18 + "NOUVEAU DÉMARRAGE DU BOT" + " " * 16 + "█\n" + "█" * 60 + "\n",
@@ -211,6 +215,9 @@ class GGEAssistantBot(commands.Bot):
             self.topgg_token = None
             logger.warning("⚠️ Aucun token Top.gg détecté. Les requêtes de vote seront ignorées.")
 
+        # Must run before self.session exists: aiohttp tracing only covers sessions created afterwards
+        await obs.start(self)
+
         connecteur_ipv4 = aiohttp.TCPConnector(family=socket.AF_INET)
         self.session = aiohttp.ClientSession(connector=connecteur_ipv4)
 
@@ -336,6 +343,9 @@ class GGEAssistantBot(commands.Bot):
             f"🎉 [NOUVEAU SERVEUR] Le bot a rejoint '{guild.name}' (ID: {guild.id}) | Membres : {guild.member_count}"
         )
 
+        obs.record_guild_event("guild_join", guild=guild, guild_total=len(self.guilds))
+        obs.upsert_guild(guild=guild, is_active=1)
+
         webhook_servers = os.getenv("WEBHOOK_JOIN")
         if webhook_servers and webhook_servers.startswith("http"):
             proprio = guild.owner.name if guild.owner else "Inconnu"
@@ -395,6 +405,9 @@ class GGEAssistantBot(commands.Bot):
 
     async def on_guild_remove(self, guild: discord.Guild):
         logger.warning(f"👋 [DÉPART SERVEUR] Le bot a été retiré de '{guild.name}' (ID: {guild.id})")
+
+        obs.record_guild_event("guild_leave", guild=guild, guild_total=len(self.guilds))
+        obs.upsert_guild(guild=guild, is_active=0, left_at=obs.ch_datetime())
 
         webhook_servers = os.getenv("WEBHOOK_LEAVE")
         if webhook_servers and webhook_servers.startswith("http"):
@@ -492,22 +505,27 @@ class GGEAssistantBot(commands.Bot):
                 expected_sig = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
                 if not hmac.compare_digest(expected_sig, parts.get("v1")):
                     logger.warning("❌ [Webhook] Signature v1 invalide.")
+                    obs.record_vote(accepted=False, reject_reason="bad_signature_v1", signature_version="v1")
                     return web.Response(status=401, text="Signature invalide")
             except Exception:
+                obs.record_vote(accepted=False, reject_reason="invalid_signature_format", signature_version="v1")
                 return web.Response(status=400, text="Erreur de calcul v1")
 
         elif auth_header:
             if auth_header != secret:
                 logger.warning("❌ [Webhook] Mot de passe v0 invalide.")
+                obs.record_vote(accepted=False, reject_reason="bad_password_v0", signature_version="v0")
                 return web.Response(status=401, text="Mauvais mot de passe v0")
 
         else:
             logger.warning(f"❌ [Webhook] Requête refusée (ni v0, ni v1). Headers : {request.headers}")
+            obs.record_vote(accepted=False, reject_reason="missing_auth", signature_version="none")
             return web.Response(status=401, text="Missing auth")
 
         try:
             payload = json.loads(raw_body)
         except Exception:
+            obs.record_vote(accepted=False, reject_reason="invalid_json", signature_version="v1" if signature_header else "v0")
             return web.Response(status=400, text="Invalid JSON")
 
         if "data" in payload:
@@ -519,9 +537,19 @@ class GGEAssistantBot(commands.Bot):
 
         if not user_id:
             logger.error(f"❌ [Webhook] Impossible de lire l'ID dans le payload : {payload}")
+            obs.record_vote(accepted=False, reject_reason="missing_user_id", event_type=str(event_type or ""), signature_version="v1" if signature_header else "v0")
             return web.Response(status=400, text="Missing user ID")
 
         webhook_votes = os.getenv("WEBHOOK_VOTES")
+
+        obs.record_vote(
+            user_id=int(user_id) if str(user_id).isdigit() else 0,
+            source="webhook",
+            event_type=str(event_type or "upvote"),
+            accepted=True,
+            signature_version="v1" if signature_header else "v0",
+            shield_until=datetime.now() + timedelta(days=7),
+        )
 
         if event_type in ["test", "webhook.test"]:
             logger.info(f"✅ [Webhook] TEST RÉUSSI ! La liaison avec Top.gg est parfaite (Test par {user_id}).")
@@ -850,12 +878,25 @@ class GGEAssistantBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Erreur critique du Webhook de Crash Background : {e}")
 
+    async def on_app_command_completion(self, interaction: discord.Interaction, command):
+        """Close the command_logs row opened by global_interaction_check"""
+        obs.complete_command(interaction, status="ok")
+
     async def on_error(self, event_method: str, *args, **kwargs):
         """Capture et signale automatiquement toutes les erreurs survenant dans un événement du bot."""
         exc_type, exc_value, exc_traceback = sys.exc_info()
         tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
 
         logger.error(f"❌ Erreur globale dans l'événement '{event_method}':\n{tb_str}")
+
+        obs.record_error(
+            source="on_error",
+            scope=event_method,
+            exception=exc_value,
+            traceback_text=tb_str,
+            severity="critical",
+            notified=True,
+        )
 
         tb_str_short = tb_str[-2000:] if len(tb_str) > 2000 else tb_str
 
@@ -877,6 +918,17 @@ class GGEAssistantBot(commands.Bot):
 
         logger.error(f"❌ Crash sur la commande admin '!{ctx.command}':\n{tb_str}")
 
+        obs.record_error(
+            source="on_command_error",
+            scope=str(ctx.command),
+            exception=error,
+            traceback_text=tb_str,
+            command=str(ctx.command),
+            notified=True,
+            user_id=getattr(ctx.author, "id", 0) or 0,
+            guild_id=getattr(ctx.guild, "id", 0) or 0 if ctx.guild else 0,
+        )
+
         self.loop.create_task(
             self._send_background_error(
                 f"💥 Crash Commande Admin : `!{ctx.command}`",
@@ -893,6 +945,18 @@ class GGEAssistantBot(commands.Bot):
         serveur = interaction.guild.name if interaction.guild else "Message Privé"
 
         logger.error(f"❌ Crash sur la commande '/{cmd_name}':\n{tb_str}")
+
+        obs.record_error(
+            source="on_tree_error",
+            scope=cmd_name,
+            exception=error,
+            traceback_text=tb_str,
+            command=cmd_name,
+            notified=True,
+            user_id=getattr(interaction.user, "id", 0) or 0,
+            guild_id=getattr(interaction.guild, "id", 0) or 0 if interaction.guild else 0,
+        )
+        obs.complete_command(interaction, status="error", error=error)
 
         self.loop.create_task(
             self._send_background_error(
@@ -916,14 +980,20 @@ class GGEAssistantBot(commands.Bot):
         if interaction.type == discord.InteractionType.autocomplete:
             return True
 
-        if interaction.user.id == MON_ID_DISCORD and getattr(self, "bypass_createur", True):
-            return True
-
         cmd_name = (
             interaction.command.qualified_name if interaction.command else interaction.data.get("name", "inconnue")
         )
 
+        # The trace_id set here is inherited by the command's API calls and log lines
+        is_mine = interaction.user.id == MON_ID_DISCORD
+        obs_ctx = obs.start_command(interaction, cmd_name, is_owner=is_mine)
+
+        if is_mine and getattr(self, "bypass_createur", True):
+            return True
+
         langue, serveur = await get_server_config(interaction)
+        if obs_ctx is not None:
+            obs_ctx.lang, obs_ctx.gge_server = langue, serveur
 
         import time
 
@@ -950,6 +1020,7 @@ class GGEAssistantBot(commands.Bot):
                             0xFFA500,
                         )
                     )
+                obs.deny_command(obs_ctx, "spam_ratelimit")
                 return False
 
         try:
@@ -995,6 +1066,7 @@ class GGEAssistantBot(commands.Bot):
                         defaut="⚠️ **Halte là !**\nTu n'as pas encore configuré ton profil personnel. Utilise la commande </setup:0> pour définir ton serveur et ta langue avant d'utiliser le bot.",
                     )
                     await interaction.response.send_message(msg, ephemeral=True)
+                obs.deny_command(obs_ctx, "no_user_config")
                 return False
 
         commandes_privees = [
@@ -1023,6 +1095,7 @@ class GGEAssistantBot(commands.Bot):
                     defaut="<:error:1512505075220611172> Cette commande est uniquement utilisable en **Messages Privés**.",
                 )
                 await interaction.response.send_message(msg, ephemeral=True)
+            obs.deny_command(obs_ctx, "dm_only")
             return False
 
         commandes_serveur = [
@@ -1046,6 +1119,7 @@ class GGEAssistantBot(commands.Bot):
                     defaut="<:error:1512505075220611172> Cette commande est uniquement utilisable sur des **Serveurs Discord**.",
                 )
                 await interaction.response.send_message(msg, ephemeral=True)
+            obs.deny_command(obs_ctx, "guild_only")
             return False
 
         try:
@@ -1067,6 +1141,8 @@ class GGEAssistantBot(commands.Bot):
 
                 if base_cmd in groupes_live or cmd_name in groupes_live or cmd_name in commandes_live:
                     is_featured = servers_info.get(serveur, {}).get("featured", False)
+                    if obs_ctx is not None:
+                        obs_ctx.server_featured = bool(is_featured)
 
                     if serveur and not is_featured:
                         if interaction.type == discord.InteractionType.application_command:
@@ -1076,6 +1152,7 @@ class GGEAssistantBot(commands.Bot):
                                 defaut="⚠️ La commande n'est actuellement pas supportée pour ton serveur de jeu GGE. Pour avoir plus d'informations, merci d'utiliser /support.",
                             )
                             await interaction.response.send_message(msg, ephemeral=True)
+                        obs.deny_command(obs_ctx, "server_not_featured")
                         return False
         except Exception as e:
             logger.error(f"❌ Erreur lors de la vérification des serveurs spéciaux : {e}")
@@ -1095,6 +1172,7 @@ class GGEAssistantBot(commands.Bot):
                     defaut="🚧 **En cours de maintenance !**\nMes gobelins travaillent pour réactiver l'ensemble des fonctionnalités au plus vite.",
                 )
                 await interaction.response.send_message(msg, ephemeral=True)
+            obs.deny_command(obs_ctx, "maintenance")
             return False
 
         blocks_data = await load_blocks_async()
@@ -1108,6 +1186,7 @@ class GGEAssistantBot(commands.Bot):
                     langue, "bot_err_cmd_blocked", reason=reason, defaut=f"⛔ **Commande désactivée** :\n> {reason}"
                 )
                 await interaction.response.send_message(msg, ephemeral=True)
+            obs.deny_command(obs_ctx, "command_blocked")
             return False
 
         user_id_str = str(interaction.user.id)
@@ -1130,6 +1209,7 @@ class GGEAssistantBot(commands.Bot):
                             0x8B0000,
                         )
                     )
+                obs.deny_command(obs_ctx, "user_banned_all")
                 return False
 
             if cmd_name in user_blocks:
@@ -1151,6 +1231,7 @@ class GGEAssistantBot(commands.Bot):
                             0x8B0000,
                         )
                     )
+                obs.deny_command(obs_ctx, "user_banned_command")
                 return False
 
         return True
@@ -1174,6 +1255,9 @@ class GGEAssistantBot(commands.Bot):
         session = getattr(self, "session", None)
         if session:
             await session.close()
+
+        # Flush the telemetry buffer before shutdown
+        await obs.stop()
 
         await super().close()
 

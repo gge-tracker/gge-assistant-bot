@@ -10,6 +10,9 @@ from pathlib import Path
 import aiohttp
 from discord.ext import commands, tasks
 
+import observability as obs
+from utils import get_api_headers
+
 logger = logging.getLogger("GGE_Bot")
 
 
@@ -21,11 +24,8 @@ class ScanCog(commands.Cog):
         self.base_output_dir = Path(data_path) / "server_scans"
         self.configuration_path = Path(data_path) / "configs" / "configuration.json"
 
-        self.headers = {
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GGE-Assistant/3.0 (Async)",
-        }
         self.webhook_url = os.getenv("WEBHOOK_SCAN")
+        self._scan_kind = "daily"
 
         # Démarrage de la tâche planifiée ex: tous les jours à 00:30 UTC
         self.daily_scan.start()
@@ -70,7 +70,7 @@ class ScanCog(commands.Cog):
             active_servers.add("E4K_FR1")
         return list(active_servers)
 
-    async def fetch_page(self, session, server, page, max_retries=4):
+    async def fetch_page(self, session, server, page, max_retries=4, obs_stats=None):
         """Télécharge UNE page avec gestion des erreurs 429 adaptées au rate limit de l'API"""
         url = f"{self.api_url}/players"
         params = {
@@ -84,25 +84,36 @@ class ScanCog(commands.Cog):
             "orderBy": "might_current",
             "orderType": "DESC",
         }
-        headers = self.headers.copy()
-        headers["gge-server"] = server
+
+        headers = await get_api_headers(custom_server=server)
 
         for attempt in range(max_retries):
             try:
                 async with session.get(url, headers=headers, params=params, timeout=15) as response:
                     if response.status == 200:
+                        if obs_stats is not None:
+                            obs_stats["pages_ok"] += 1
                         return await response.json()
-                    elif response.status == 429:  # Too Many Requests
+                    elif response.status == 429:
                         wait_time = 15 * (attempt + 1)
+                        if obs_stats is not None:
+                            obs_stats["http_429"] += 1
+                            obs_stats["backoff_total_s"] += wait_time
                         logger.warning(f"⚠️ 429 sur {server} (Page {page}). Purge API de {wait_time}s...")
                         await asyncio.sleep(wait_time)
                     else:
+                        if obs_stats is not None:
+                            obs_stats["http_errors"] += 1
                         logger.error(f"❌ Erreur {response.status} sur {server} (Page {page}).")
                         await asyncio.sleep(2)
             except Exception as e:
+                if obs_stats is not None:
+                    obs_stats["http_errors"] += 1
                 logger.error(f"❌ Exception réseau sur {server} (Page {page}): {e}")
                 await asyncio.sleep(2)
 
+        if obs_stats is not None:
+            obs_stats["pages_failed"] += 1
         return None
 
     async def scan_server(self, session, server, index_actuel, total_serveurs):
@@ -110,10 +121,19 @@ class ScanCog(commands.Cog):
         logger.info(f"🔍 DÉMARRAGE [{index_actuel}/{total_serveurs}] : {server}")
         start_time = asyncio.get_event_loop().time()
 
-        first_page_data = await self.fetch_page(session, server, 1)
+        obs_stats = {"pages_ok": 0, "pages_failed": 0, "http_429": 0, "http_errors": 0, "backoff_total_s": 0}
+        debut_scan = datetime.now()
+
+        first_page_data = await self.fetch_page(session, server, 1, obs_stats=obs_stats)
 
         if not first_page_data or not first_page_data.get("players"):
             logger.error(f"❌ Aucun joueur trouvé ou erreur fatale pour {server}.")
+            obs.record_scan_run(
+                gge_server=server, status="failed", started_at=debut_scan, kind=self._scan_kind,
+                server_index=index_actuel, servers_total=total_serveurs,
+                error_message="Aucun joueur trouvé ou erreur fatale sur la première page",
+                **obs_stats,
+            )
             return None
 
         total_pages = first_page_data.get("pagination", {}).get("total_pages", 1)
@@ -149,7 +169,7 @@ class ScanCog(commands.Cog):
 
         if total_pages > 1:
             for page in range(2, total_pages + 1):
-                res = await self.fetch_page(session, server, page)
+                res = await self.fetch_page(session, server, page, obs_stats=obs_stats)
                 if res:
                     parse_players(res)
 
@@ -158,6 +178,21 @@ class ScanCog(commands.Cog):
         duration = round(asyncio.get_event_loop().time() - start_time, 2)
         logger.info(
             f"✅ FINI [{index_actuel}/{total_serveurs}] : {server} - {len(all_players)} joueurs récupérés en {duration}s"
+        )
+
+        alliances_uniques = {p["alliance"] for p in all_players.values() if p.get("alliance") != "Sans alliance"}
+        obs.record_scan_run(
+            gge_server=server,
+            status="success" if not obs_stats["pages_failed"] else "partial",
+            started_at=debut_scan,
+            kind=self._scan_kind,
+            server_index=index_actuel,
+            servers_total=total_serveurs,
+            duration_s=duration,
+            pages_total=total_pages,
+            players_total=len(all_players),
+            alliances_total=len(alliances_uniques),
+            **obs_stats,
         )
         return all_players, duration
 
@@ -204,6 +239,8 @@ class ScanCog(commands.Cog):
     async def scan_specific_server(self, server_name: str):
         """Scanne uniquement un serveur spécifique et sauvegarde les résultats."""
         server_name = server_name.upper()
+        self._scan_kind = "targeted"
+        obs.set_task_name("scan_specific_server")
         logger.info("======================================================")
         logger.info(f"🌍 DÉMARRAGE DU SCAN MANUEL CIBLÉ : {server_name}")
         logger.info("======================================================")
@@ -221,11 +258,16 @@ class ScanCog(commands.Cog):
         except Exception as e:
             logger.error(f"❌ Erreur lors du scan spécifique de {server_name} : {e}")
             logger.error(traceback.format_exc())
+            obs.record_error(source="task", scope="scan_specific_server", exception=e, cog="scan_server", gge_server=server_name)
             raise e
+        finally:
+            self._scan_kind = "daily"
 
     # Lancement tous les jours à 00h30 UTC
     @tasks.loop(time=time(hour=0, minute=30, tzinfo=UTC))
     async def daily_scan(self):
+        self._scan_kind = "daily"
+        obs.set_task_name("daily_scan")
         logger.info("======================================================")
         logger.info("🌍 DÉMARRAGE DE LA ROUTINE MULTI-SERVEURS (ASYNC)")
         logger.info("======================================================")
@@ -253,6 +295,7 @@ class ScanCog(commands.Cog):
         except Exception as e:
             logger.error(f"❌ CRASH FATAL DU SCANNER : {e}")
             logger.error(traceback.format_exc())
+            obs.record_error(source="task", scope="daily_scan", exception=e, cog="scan_server", severity="critical", notified=True)
             await self.send_discord_alert(
                 "🚨 CRASH DU SCANNER", f"La boucle asynchrone a planté :\n```py\n{e}\n```", 16711680
             )

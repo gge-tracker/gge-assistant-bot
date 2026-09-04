@@ -57,6 +57,8 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 │   └── configs
 │       ├── configuration.json
 │       └── event_mapping.json
+├── database
+│   └── schema.sql
 ├── discord_bot.py
 ├── docker-compose.yaml
 ├── emojis.py
@@ -64,11 +66,20 @@ A comprehensive Discord bot designed to assist "Goodgame Empire" (GGE) and "Empi
 │   ├── de.json
 │   ├── en.json
 │   └── fr.json
+├── observability
+│   ├── __init__.py
+│   ├── client.py
+│   ├── config.py
+│   ├── context.py
+│   ├── handler.py
+│   ├── http_tracing.py
+│   ├── recorders.py
+│   └── runtime.py
 ├── requirements.txt
 ├── ruff.toml
 └── utils.py
 
-6 directories, 28 files
+8 directories, 37 files
 ```
 <!-- TREE-END -->
 *(This section is auto-updated via GitHub Actions)*

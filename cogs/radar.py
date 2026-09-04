@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+import observability as obs
 from utils import (
     BASE_DATA_PATH,
     CONFIG_DIR,
@@ -247,6 +248,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
         # ⚡ CACHE ETAG POUR LA BETA API
         self.etags_cache = {}
         self.next_scan = {}
+        # GGE server currently being scanned by radar_spy_task
+        self._serveur_courant = ""
 
     async def cog_load(self):
         if not self.radar_spy_task.is_running():
@@ -255,23 +258,57 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
     async def cog_unload(self):
         self.radar_spy_task.cancel()
 
-    async def envoyer_alerte_privee(self, abonnes: dict, type_filtre: str, embeds_locales: dict, users_lang: dict):
+    FILTRES_ALLIANCE = ("infos", "mouvements", "rangs")
+
+    async def envoyer_alerte_privee(
+        self,
+        abonnes: dict,
+        type_filtre: str,
+        embeds_locales: dict,
+        users_lang: dict,
+        target_name: str = "",
+        target_id: str = "",
+        gge_server: str = "",
+    ):
         """Envoie l'alerte MP uniquement aux joueurs qui ont coché ce filtre"""
+        destinataires = livres = bloques = echecs = 0
+
         for user_id, prefs in abonnes.items():
             if prefs.get(type_filtre, False):
+                destinataires += 1
                 try:
                     langue = users_lang.get(user_id, "fr")
                     embed = embeds_locales.get(langue, embeds_locales.get("fr"))
                     if not embed:
+                        destinataires -= 1
                         continue
 
                     await setup_embed_footer(embed, None, langue)
                     user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
                     await user.send(embed=embed)
+                    livres += 1
                 except discord.Forbidden:
+                    bloques += 1
                     logger.warning(f"⚠️ Impossible d'envoyer un MP à {user_id} (DMs bloqués).")
                 except Exception as e:
+                    echecs += 1
                     logger.error(f"❌ Erreur MP à {user_id} : {e}")
+
+        if destinataires:
+            est_alliance = type_filtre in self.FILTRES_ALLIANCE
+            obs.record_alert(
+                source="radar",
+                alert_type=type_filtre,
+                gge_server=gge_server or self._serveur_courant,
+                target_type="alliance" if est_alliance else "player",
+                target_id=target_id,
+                target_name=target_name,
+                channel="dm",
+                recipients=destinataires,
+                delivered=livres,
+                failed=echecs,
+                dm_blocked=bloques,
+            )
 
     # ==========================================
     # 🕵️‍♂️ COMMANDES : RADAR PLAYER
@@ -703,6 +740,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
     # ==========================================
     @tasks.loop(seconds=20)
     async def radar_spy_task(self):
+        obs.set_task_name("radar_spy_task")
         try:
             maintenant = discord.utils.utcnow()
             now_ts = maintenant.timestamp()
@@ -744,6 +782,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                 targets_by_server[srv]["players"].append((p_id, p_info))
 
             for serveur, targets in targets_by_server.items():
+                self._serveur_courant = serveur
                 headers = await get_api_headers(custom_server=serveur)
 
                 # ==========================================
@@ -820,7 +859,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                         )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "infos", embeds_locales, users_lang
+                                        abonnes_alliance, "infos", embeds_locales, users_lang,
+                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
                                     )
                                     a_info["name"] = new_name
                                     changes_detected = True
@@ -877,7 +917,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                         )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "infos", embeds_locales, users_lang
+                                        abonnes_alliance, "infos", embeds_locales, users_lang,
+                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
                                     )
 
                                 if entrees or sorties:
@@ -931,7 +972,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                             )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "mouvements", embeds_locales, users_lang
+                                        abonnes_alliance, "mouvements", embeds_locales, users_lang,
+                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
                                     )
 
                                 if rangs_changes:
@@ -984,7 +1026,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                         )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "rangs", embeds_locales, users_lang
+                                        abonnes_alliance, "rangs", embeds_locales, users_lang,
+                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
                                     )
 
                                 if new_name != old_name or entrees or sorties or rangs_changes:
@@ -1082,7 +1125,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                     embeds_locales[lg] = embed
 
                                                 await self.envoyer_alerte_privee(
-                                                    abonnes, "pseudo", embeds_locales, users_lang
+                                                    abonnes, "pseudo", embeds_locales, users_lang,
+                                                    target_name=player, target_id=str(p_id), gge_server=serveur
                                                 )
                                                 info["name"], info["last_name"] = (
                                                     new_name,
@@ -1133,7 +1177,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                     embeds_locales[lg] = embed
 
                                                 await self.envoyer_alerte_privee(
-                                                    abonnes, "alliance", embeds_locales, users_lang
+                                                    abonnes, "alliance", embeds_locales, users_lang,
+                                                    target_name=player, target_id=str(p_id), gge_server=serveur
                                                 )
                                                 info["last_alliance_name"], info["last_alliance"] = (
                                                     new_alli,
@@ -1176,7 +1221,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                     embeds_locales[lg] = embed
 
                                                 await self.envoyer_alerte_privee(
-                                                    abonnes, "puissance", embeds_locales, users_lang
+                                                    abonnes, "puissance", embeds_locales, users_lang,
+                                                    target_name=player, target_id=str(p_id), gge_server=serveur
                                                 )
                                                 info["last_might"] = current_might
                                                 changes_detected = True
@@ -1299,7 +1345,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                         embeds_locales[lg] = embed
 
                                                     await self.envoyer_alerte_privee(
-                                                        abonnes, "colombe", embeds_locales, users_lang
+                                                        abonnes, "colombe", embeds_locales, users_lang,
+                                                    target_name=player, target_id=str(p_id), gge_server=serveur
                                                     )
 
                                             if (new_peace != old_peace) or (was_protected != is_protected):
@@ -1385,7 +1432,8 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                 embeds_locales[lg] = embed
 
                                             await self.envoyer_alerte_privee(
-                                                abonnes, "position", embeds_locales, users_lang
+                                                abonnes, "position", embeds_locales, users_lang,
+                                                target_name=info.get("name", ""), target_id=str(p_id), gge_server=serveur
                                             )
                                             info["last_pos"] = m["created_at"]
                                             changes_detected = True
@@ -1397,6 +1445,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
 
         except Exception as e:
             logger.error(f"❌ [RADAR CRASH] : {traceback.format_exc()}")
+            obs.record_error(source="task", scope="radar_spy_task", exception=e, cog="radar", severity="critical")
 
 
 async def setup(bot: commands.Bot):
