@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -114,8 +115,6 @@ class RadarSettingsView(discord.ui.View):
         )
 
     async def on_timeout(self):
-        # Les messages éphémères sont gérés par Discord qui désactive l'interaction après 15 min,
-        # mais vider la mémoire côté bot proprement est important.
         for child in self.children:
             child.disabled = True
 
@@ -314,6 +313,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
     # 🕵️‍♂️ COMMANDES : RADAR PLAYER
     # ==========================================
     @app_commands.command(name="add", description="Add a player to your personal radar (Limit: 25 followed)")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.describe(reason="Reason for surveillance")
     async def s_add(self, interaction: discord.Interaction, player: str, reason: str = "Surveillance générale"):
@@ -420,6 +420,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
         await prompt_vote_if_lucky(interaction, probability_percent=20, langue=langue)
 
     @app_commands.command(name="remove", description="Remove a player from your personal radar")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def s_remove(self, interaction: discord.Interaction, player: str):
         try:
@@ -460,6 +461,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
     alliance_group = app_commands.Group(name="alliance", description="Manage the radar of complete alliances")
 
     @alliance_group.command(name="add", description="Add an entire alliance to your radar (Limit: 3 followed)")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     @app_commands.describe(reason="Why are you monitoring this alliance?")
     async def a_add(self, interaction: discord.Interaction, alliance_name: str, reason: str = "Surveillance globale"):
@@ -582,6 +584,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
         await prompt_vote_if_lucky(interaction, probability_percent=20, langue=langue)
 
     @alliance_group.command(name="remove", description="Remove an alliance from your personal radar")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def a_remove(self, interaction: discord.Interaction, alliance_name: str):
         try:
@@ -625,6 +628,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
     # 📋 COMMANDE : LIST GLOBAL
     # ==========================================
     @app_commands.command(name="list", description="Display your personal radar (Players & Alliances)")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def s_list(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(ephemeral=True, thinking=True)
@@ -1346,7 +1350,7 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
 
                                                     await self.envoyer_alerte_privee(
                                                         abonnes, "colombe", embeds_locales, users_lang,
-                                                    target_name=player, target_id=str(p_id), gge_server=serveur
+                                                        target_name=player, target_id=str(p_id), gge_server=serveur
                                                     )
 
                                             if (new_peace != old_peace) or (was_protected != is_protected):

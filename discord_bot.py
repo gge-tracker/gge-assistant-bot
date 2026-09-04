@@ -187,6 +187,7 @@ class GGEAssistantBot(commands.Bot):
             logger.info("📄 [JSON] Commandes et sous-commandes actuelles générées avec succès.")
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'export JSON : {e}")
+            obs.record_error(source="background", scope="export_commands", exception=e, cog="core")
 
     def serialize_options(self, options):
         """Transforme les options en format JSON pur."""
@@ -394,14 +395,6 @@ class GGEAssistantBot(commands.Bot):
                         f"Crash lors du message de bienvenue sur **{guild.name}**.\nErreur : `{e}`",
                     )
                 )
-            except Exception as e:
-                logger.error(f"❌ Erreur inattendue du message de bienvenue sur {guild.name} : {e}")
-                self.loop.create_task(
-                    self._send_background_error(
-                        "🐛 Crash Inattendu (Bienvenue)",
-                        f"Crash lors du message de bienvenue sur **{guild.name}**.\nErreur : `{e}`",
-                    )
-                )
 
     async def on_guild_remove(self, guild: discord.Guild):
         logger.warning(f"👋 [DÉPART SERVEUR] Le bot a été retiré de '{guild.name}' (ID: {guild.id})")
@@ -428,63 +421,71 @@ class GGEAssistantBot(commands.Bot):
 
     @tasks.loop(seconds=15)
     async def flag_watcher_task(self):
-        flag_path = Path("/app/data/scan.flag")
+        obs.set_task_name("flag_watcher_task")
+        try:
+            flag_path = Path("/app/data/scan.flag")
 
-        if flag_path.exists():
-            if not self.scan_flag_detected:
-                logger.info(
-                    "⚡ [Watcher] Fichier scan.flag détecté. Un scan global du serveur est en cours d'exécution..."
-                )
-                self.scan_flag_detected = True
-        else:
-            if self.scan_flag_detected:
-                logger.info(
-                    "🔄 [Watcher] Fichier scan.flag effacé ! Fin des écritures détectée. Actualisation de la RAM..."
-                )
-                self.scan_flag_detected = False
-                try:
-                    for srv in CACHE:
-                        CACHE[srv]["last_refresh"] = 0
-                    logger.info("✅ [Watcher] Le cache mémoire sera réactualisé à la prochaine commande.")
-                except Exception as e:
-                    logger.error(f"❌ [Watcher] Échec : {e}")
+            if flag_path.exists():
+                if not self.scan_flag_detected:
+                    logger.info(
+                        "⚡ [Watcher] Fichier scan.flag détecté. Un scan global du serveur est en cours d'exécution..."
+                    )
+                    self.scan_flag_detected = True
+            else:
+                if self.scan_flag_detected:
+                    logger.info(
+                        "🔄 [Watcher] Fichier scan.flag effacé ! Fin des écritures détectée. Actualisation de la RAM..."
+                    )
+                    self.scan_flag_detected = False
+                    try:
+                        for srv in CACHE:
+                            CACHE[srv]["last_refresh"] = 0
+                        logger.info("✅ [Watcher] Le cache mémoire sera réactualisé à la prochaine commande.")
+                    except Exception as e:
+                        logger.error(f"❌ [Watcher] Échec : {e}")
+        except Exception as e:
+            obs.record_error(source="task", scope="flag_watcher_task", exception=e, cog="core")
 
     @tasks.loop(seconds=20)
     async def status_task(self):
-        if self.maintenance_mode:
-            statut_maint = t("fr", "bot_activity_maintenance", defaut="🚧 EN MAINTENANCE 🚧")
-            activity = discord.Activity(type=discord.ActivityType.watching, name=statut_maint)
-            await self.change_presence(activity=activity, status=discord.Status.dnd)
-            return
+        obs.set_task_name("status_task")
+        try:
+            if self.maintenance_mode:
+                statut_maint = t("fr", "bot_activity_maintenance", defaut="🚧 EN MAINTENANCE 🚧")
+                activity = discord.Activity(type=discord.ActivityType.watching, name=statut_maint)
+                await self.change_presence(activity=activity, status=discord.Status.dnd)
+                return
 
-        nb_serveurs = len(self.guilds)
-        nb_membres = sum(guild.member_count for guild in self.guilds if guild.member_count)
+            nb_serveurs = len(self.guilds)
+            nb_membres = sum(guild.member_count for guild in self.guilds if guild.member_count)
 
-        def compter_serveurs_gge():
-            dossier_serveurs = Path("/app/data/server_scans")
-            if dossier_serveurs.exists():
-                return sum(1 for d in dossier_serveurs.iterdir() if d.is_dir())
-            return 0
+            def compter_serveurs_gge():
+                dossier_serveurs = Path("/app/data/server_scans")
+                if dossier_serveurs.exists():
+                    return sum(1 for d in dossier_serveurs.iterdir() if d.is_dir())
+                return 0
 
-        nb_gge_serveurs = await asyncio.to_thread(compter_serveurs_gge)
+            nb_gge_serveurs = await asyncio.to_thread(compter_serveurs_gge)
 
-        statuts = [
-            discord.Activity(type=discord.ActivityType.listening, name="⚙️ /setup | Start here"),
-            discord.Activity(type=discord.ActivityType.watching, name="📖 /help | All commands"),
-            discord.Activity(
-                type=discord.ActivityType.watching, name=f"🌍 {nb_serveurs} servers | 👥 {nb_membres} users"
-            ),
-            discord.Activity(type=discord.ActivityType.competing, name=f"⚔️ {nb_gge_serveurs} GGE servers"),
-            discord.Activity(type=discord.ActivityType.playing, name=f"🚀 {BOT_VERSION}"),
-        ]
+            statuts = [
+                discord.Activity(type=discord.ActivityType.listening, name="⚙️ /setup | Start here"),
+                discord.Activity(type=discord.ActivityType.watching, name="📖 /help | All commands"),
+                discord.Activity(
+                    type=discord.ActivityType.watching, name=f"🌍 {nb_serveurs} servers | 👥 {nb_membres} users"
+                ),
+                discord.Activity(type=discord.ActivityType.competing, name=f"⚔️ {nb_gge_serveurs} GGE servers"),
+                discord.Activity(type=discord.ActivityType.playing, name=f"🚀 {BOT_VERSION}"),
+            ]
 
-        if self.custom_status:
-            statuts.append(discord.Activity(type=discord.ActivityType.playing, name=self.custom_status))
+            if self.custom_status:
+                statuts.append(discord.Activity(type=discord.ActivityType.playing, name=self.custom_status))
 
-        activity = statuts[self.status_index % len(statuts)]
-        self.status_index += 1
+            activity = statuts[self.status_index % len(statuts)]
+            self.status_index += 1
 
-        await self.change_presence(activity=activity, status=discord.Status.online)
+            await self.change_presence(activity=activity, status=discord.Status.online)
+        except Exception as e:
+            obs.record_error(source="task", scope="status_task", exception=e, cog="core")
 
     @status_task.before_loop
     async def before_status_task(self):
@@ -496,7 +497,11 @@ class GGEAssistantBot(commands.Bot):
         signature_header = request.headers.get("x-topgg-signature")
         auth_header = request.headers.get("Authorization")
 
-        raw_body = await request.text()
+        try:
+            raw_body = await request.text()
+        except Exception as e:
+            obs.record_error(source="webhook", scope="topgg_body", exception=e, cog="core")
+            return web.Response(status=400, text="Unreadable body")
 
         if signature_header:
             try:
@@ -507,7 +512,8 @@ class GGEAssistantBot(commands.Bot):
                     logger.warning("❌ [Webhook] Signature v1 invalide.")
                     obs.record_vote(accepted=False, reject_reason="bad_signature_v1", signature_version="v1")
                     return web.Response(status=401, text="Signature invalide")
-            except Exception:
+            except Exception as e:
+                obs.record_error(source="webhook", scope="topgg_sig", exception=e, cog="core")
                 obs.record_vote(accepted=False, reject_reason="invalid_signature_format", signature_version="v1")
                 return web.Response(status=400, text="Erreur de calcul v1")
 
@@ -589,6 +595,7 @@ class GGEAssistantBot(commands.Bot):
                 json.dump(votes_data, f, indent=4)
         except Exception as e:
             logger.error(f"❌ [Webhook] Erreur lors de la sauvegarde : {e}")
+            obs.record_error(source="webhook", scope="topgg_save", exception=e, cog="core")
 
         try:
             user = self.get_user(int(user_id)) or await self.fetch_user(int(user_id))
@@ -621,70 +628,75 @@ class GGEAssistantBot(commands.Bot):
 
     @tasks.loop(hours=12)
     async def sync_topgg_votes_task(self):
-        VOTES_FILE = JOUEURS_DIR / "votes.json"
-
-        if not getattr(self, "topgg_token", None):
-            return
-
-        headers = {"Authorization": f"Bearer {self.topgg_token}"}
-        url = f"https://top.gg/api/bots/{self.user.id}/votes"
-
-        recent_voters_ids = []
+        obs.set_task_name("sync_topgg_votes_task")
         try:
-            async with self.session.get(url, headers=headers, timeout=10) as r:
-                if r.status != 200:
-                    err_txt = await r.text()
-                    logger.error(f"❌ [Top.gg] Erreur API ({r.status}) : {err_txt}")
-                    return
+            VOTES_FILE = JOUEURS_DIR / "votes.json"
 
-                raw_voters = await r.json()
+            if not getattr(self, "topgg_token", None):
+                return
 
-                for v in raw_voters:
-                    if isinstance(v, dict):
-                        recent_voters_ids.append(str(v.get("id", "")))
-                    else:
-                        recent_voters_ids.append(str(v))
+            headers = {"Authorization": f"Bearer {self.topgg_token}"}
+            url = f"https://top.gg/api/bots/{self.user.id}/votes"
 
-                recent_voters_ids = [uid for uid in recent_voters_ids if uid]
-
-        except Exception as e:
-            logger.error(f"❌ [Top.gg] Erreur de requête aiohttp : {e}")
-            return
-
-        votes_data = {}
-        if VOTES_FILE.exists():
+            recent_voters_ids = []
             try:
-                with open(VOTES_FILE, encoding="utf-8") as f:
-                    votes_data = json.load(f)
-            except Exception:
-                pass
+                async with self.session.get(url, headers=headers, timeout=10) as r:
+                    if r.status != 200:
+                        err_txt = await r.text()
+                        logger.error(f"❌ [Top.gg] Erreur API ({r.status}) : {err_txt}")
+                        return
 
-        now = datetime.now()
-        updated = False
+                    raw_voters = await r.json()
 
-        keys_to_delete = []
-        for uid, deadline_iso in votes_data.items():
-            if datetime.fromisoformat(deadline_iso) < now:
-                keys_to_delete.append(uid)
+                    for v in raw_voters:
+                        if isinstance(v, dict):
+                            recent_voters_ids.append(str(v.get("id", "")))
+                        else:
+                            recent_voters_ids.append(str(v))
 
-        for uid in recent_voters_ids:
-            if uid not in votes_data or uid in keys_to_delete:
-                votes_data[uid] = (now + timedelta(days=7)).isoformat()
-                if uid in keys_to_delete:
-                    keys_to_delete.remove(uid)
+                    recent_voters_ids = [uid for uid in recent_voters_ids if uid]
+
+            except Exception as e:
+                logger.error(f"❌ [Top.gg] Erreur de requête aiohttp : {e}")
+                obs.record_error(source="task", scope="sync_topgg_fetch", exception=e, cog="core")
+                return
+
+            votes_data = {}
+            if VOTES_FILE.exists():
+                try:
+                    with open(VOTES_FILE, encoding="utf-8") as f:
+                        votes_data = json.load(f)
+                except Exception:
+                    pass
+
+            now = datetime.now()
+            updated = False
+
+            keys_to_delete = []
+            for uid, deadline_iso in votes_data.items():
+                if datetime.fromisoformat(deadline_iso) < now:
+                    keys_to_delete.append(uid)
+
+            for uid in recent_voters_ids:
+                if uid not in votes_data or uid in keys_to_delete:
+                    votes_data[uid] = (now + timedelta(days=7)).isoformat()
+                    if uid in keys_to_delete:
+                        keys_to_delete.remove(uid)
+                    updated = True
+
+            for uid in keys_to_delete:
+                del votes_data[uid]
                 updated = True
 
-        for uid in keys_to_delete:
-            del votes_data[uid]
-            updated = True
-
-        if updated:
-            try:
-                with open(VOTES_FILE, "w", encoding="utf-8") as f:
-                    json.dump(votes_data, f, indent=4)
-                logger.info("✅ [Top.gg] Base des votes mise à jour via API v1 (Boucliers 7j attribués/nettoyés).")
-            except Exception as e:
-                logger.error(f"❌ Impossible de sauvegarder votes.json : {e}")
+            if updated:
+                try:
+                    with open(VOTES_FILE, "w", encoding="utf-8") as f:
+                        json.dump(votes_data, f, indent=4)
+                    logger.info("✅ [Top.gg] Base des votes mise à jour via API v1 (Boucliers 7j attribués/nettoyés).")
+                except Exception as e:
+                    logger.error(f"❌ Impossible de sauvegarder votes.json : {e}")
+        except Exception as e:
+            obs.record_error(source="task", scope="sync_topgg_votes_task", exception=e, cog="core")
 
     @sync_topgg_votes_task.before_loop
     async def before_sync_votes(self):
@@ -692,7 +704,7 @@ class GGEAssistantBot(commands.Bot):
 
     @tasks.loop(hours=3)
     async def update_servers_task(self):
-
+        obs.set_task_name("update_servers_task")
         url = "https://ggetracker.github.io/i18n/servers.xml"
         webhook_url = os.getenv("WEBHOOK_SYNC")
 
@@ -818,17 +830,19 @@ class GGEAssistantBot(commands.Bot):
                     logger.warning(f"⚠️ [XML Sync] Impossible d'accéder au XML (Erreur {r.status})")
         except Exception as e:
             logger.error(f"❌ [XML Sync] Erreur lors de l'unification des serveurs : {e}")
+            obs.record_error(source="task", scope="update_servers_task", exception=e, cog="core")
 
     @tasks.loop(minutes=30)
     async def post_server_count_task(self):
-        if not getattr(self, "topgg_token", None):
-            return
-
-        url = f"https://top.gg/api/bots/{self.user.id}/stats"
-        headers = {"Authorization": f"Bearer {self.topgg_token}"}
-        payload = {"server_count": len(self.guilds)}
-
+        obs.set_task_name("post_server_count_task")
         try:
+            if not getattr(self, "topgg_token", None):
+                return
+
+            url = f"https://top.gg/api/bots/{self.user.id}/stats"
+            headers = {"Authorization": f"Bearer {self.topgg_token}"}
+            payload = {"server_count": len(self.guilds)}
+
             async with self.session.post(url, headers=headers, json=payload, timeout=10) as r:
                 if r.status == 200:
                     logger.info(f"📈 [Top.gg] Compteur de serveurs mis à jour : {len(self.guilds)} serveurs.")
@@ -836,6 +850,7 @@ class GGEAssistantBot(commands.Bot):
                     logger.error(f"❌ [Top.gg] Échec de la mise à jour des stats ({r.status}).")
         except Exception as e:
             logger.error(f"❌ [Top.gg] Erreur réseau lors de la mise à jour des stats : {e}")
+            obs.record_error(source="task", scope="post_server_count_task", exception=e, cog="core")
 
     @post_server_count_task.before_loop
     async def before_post_stats(self):
@@ -857,6 +872,7 @@ class GGEAssistantBot(commands.Bot):
             await webhook.send(embed=embed, username="GGE Système 🚨")
         except Exception as e:
             logger.error(f"❌ Erreur Webhook Système : {e}")
+            obs.record_error(source="background", scope="send_system_alert", exception=e, cog="core")
 
     async def _send_background_error(self, titre: str, description: str):
         """Alerte système indépendante (Crash Global, Erreur de tâche de fond, Permissions)."""

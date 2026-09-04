@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import observability as obs
 from utils import (
     BASE_DATA_PATH,
     DICT_EMOJIS,
@@ -28,7 +29,47 @@ from utils import (
 
 logger = logging.getLogger("GGE_Bot")
 
+RANKS_MAP = {
+    0: "Chef",
+    1: "Représentant",
+    2: "Maréchal",
+    3: "Trésorier",
+    4: "Diplomate",
+    5: "Recruteur",
+    6: "Général",
+    7: "Sergent",
+    8: "Membre",
+    9: "Novice",
+}
 
+
+def get_rank_str(rank_int, langue):
+    mapping = {
+        0: t(langue, "prof_role_0", defaut="Chef"),
+        1: t(langue, "prof_role_1", defaut="Représentant"),
+        2: t(langue, "prof_role_2", defaut="Maréchal"),
+        3: t(langue, "prof_role_3", defaut="Trésorier"),
+        4: t(langue, "prof_role_4", defaut="Diplomate"),
+        5: t(langue, "prof_role_5", defaut="Recruteur"),
+        6: t(langue, "prof_role_6", defaut="Général"),
+        7: t(langue, "prof_role_7", defaut="Sergent"),
+        8: t(langue, "prof_role_8", defaut="Membre"),
+        9: t(langue, "prof_role_9", defaut="Novice"),
+    }
+    return mapping.get(rank_int, t(langue, "prof_role_fallback", r=rank_int, defaut=f"Grade {rank_int}"))
+
+
+def get_discord_time(iso_str, langue="fr"):
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return f"<t:{int(dt.timestamp())}:R>"
+    except:
+        return t(langue, "rad_time_recent", defaut="Récemment")
+
+
+# ===========================================
+# 🎛️ MENU INTERACTIF DES FILTRES JOUEURS
+# ===========================================
 class HistoriqueView(discord.ui.View):
     def __init__(self, embeds_dict, interaction: discord.Interaction, langue: str = "fr"):
         super().__init__(timeout=3600)
@@ -44,7 +85,6 @@ class HistoriqueView(discord.ui.View):
         self.btn_alliance.emoji = DICT_EMOJIS.get("e_alliance_icon", "🛡️")
 
         self.btn_position.label = t(langue, "prof_hist_btn_mouvements", defaut="Mouvements")
-        # Fallbacks sur e_compass s'il te manque e_moove dans ton DICT_EMOJIS
         self.btn_position.emoji = DICT_EMOJIS.get("e_moove", DICT_EMOJIS.get("e_compass", "📍"))
 
         self.btn_prev.emoji = DICT_EMOJIS.get("e_last", "⏮️")
@@ -141,6 +181,7 @@ class ProfilsCog(commands.Cog):
         self.clr_descalli = discord.Color.from_rgb(77, 111, 23)
 
     @app_commands.command(name="server", description="Affiche les statistiques globales de ton serveur")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def server_stats(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
 
@@ -324,6 +365,7 @@ class ProfilsCog(commands.Cog):
         await interaction.followup.send(embed=embed)
 
     @player_group.command(name="profile", description="Detailed player profile")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def player_info(self, interaction: discord.Interaction, player: str):
         try:
@@ -557,6 +599,7 @@ class ProfilsCog(commands.Cog):
 
         except Exception as e:
             logger.error(f"❌ [Profils - Joueur] Erreur fatale : {traceback.format_exc()}")
+            obs.record_error(source="command", scope="player_profile", exception=e, cog="profils")
             try:
                 await interaction.followup.send(
                     t(langue, "prof_err_internal", defaut="{e_error} Erreur système interne.")
@@ -768,6 +811,7 @@ class ProfilsCog(commands.Cog):
             return None
 
     @player_group.command(name="history", description="Displays a player's complete history")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def history(self, interaction: discord.Interaction, player: str):
         try:
@@ -922,6 +966,7 @@ class ProfilsCog(commands.Cog):
         await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
     @player_group.command(name="dove", description="Check the date and time a player's protection ended")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def dove(self, interaction: discord.Interaction, player: str):
         await interaction.response.defer()
@@ -998,6 +1043,7 @@ class ProfilsCog(commands.Cog):
     @player_group.command(
         name="compare", description="Responsive comparative analysis and calculation of the hazard index"
     )
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player1=joueur_autocomplete)
     @app_commands.autocomplete(player2=joueur_autocomplete)
     async def compare(self, interaction: discord.Interaction, player1: str, player2: str):
@@ -1332,6 +1378,7 @@ class ProfilsCog(commands.Cog):
         await interaction.followup.send(embed=embed)
 
     @alliance_group.command(name="profile", description="Detailed profile of an alliance (Quick and paginated)")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_info(self, interaction: discord.Interaction, alliance_name: str):
         try:
@@ -1540,6 +1587,7 @@ class ProfilsCog(commands.Cog):
 
         except Exception as e:
             logger.error(f"❌ [Profils - Alliance] Erreur fatale : {traceback.format_exc()}")
+            obs.record_error(source="command", scope="alliance_profile", exception=e, cog="profils")
             try:
                 await interaction.followup.send(
                     t(langue, "prof_alli_err_internal", defaut="{e_error} Erreur système interne.")
@@ -1667,6 +1715,7 @@ class ProfilsCog(commands.Cog):
         }
 
     @alliance_group.command(name="might", description="Historical Power (PP) of an alliance over X days")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     @app_commands.describe(days="Period to analyze in days (Default: 3, Maximum: 10)")
     async def alliance_might(self, interaction: discord.Interaction, alliance_name: str, days: int = 3):
@@ -1857,6 +1906,7 @@ class ProfilsCog(commands.Cog):
         await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
     @alliance_group.command(name="property", description="Displays all properties of an alliance")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(alliance_name="Alliance name")
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_property(self, interaction: discord.Interaction, alliance_name: str):
@@ -2021,6 +2071,7 @@ class ProfilsCog(commands.Cog):
         await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
     @alliance_group.command(name="description", description="View the history of the last wall changes")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_description(self, interaction: discord.Interaction, alliance_name: str):
         try:
@@ -2051,7 +2102,7 @@ class ProfilsCog(commands.Cog):
                     if target:
                         alliance_id = target.get("alliance_id") or target.get("id") or target.get("allianceId")
         except Exception as e:
-            self.logger.warning(f"⚠️ [Description Alliance] API /name/ injoignable pour {alliance_name} : {e}")
+            logger.warning(f"⚠️ [Description Alliance] API /name/ injoignable pour {alliance_name} : {e}")
 
         if not alliance_id:
             try:
@@ -2080,7 +2131,7 @@ class ProfilsCog(commands.Cog):
                                 alliance_id = str(aid)
                                 break
             except Exception as e:
-                self.logger.error(f"❌ [Description Alliance] Erreur Plan B (Scan local) pour {alliance_name} : {e}")
+                logger.error(f"❌ [Description Alliance] Erreur Plan B (Scan local) pour {alliance_name} : {e}")
 
         if not alliance_id:
             msg = t(
@@ -2108,7 +2159,7 @@ class ProfilsCog(commands.Cog):
                 if isinstance(data, list) and data:
                     data = data[0]
         except Exception as e:
-            self.logger.error(f"❌ Erreur API GGE Tracker (Murs) : {e}")
+            logger.error(f"❌ Erreur API GGE Tracker (Murs) : {e}")
             return await interaction.followup.send(
                 t(langue, "prof_desc_err_tech", defaut="{e_error} Erreur technique lors de la connexion à l'API.")
             )
@@ -2182,7 +2233,7 @@ class ProfilsCog(commands.Cog):
                     texte_affiche = clean_desc(entry.get("old_description", ""))
                     murs_blocks.append({"name": header_title, "value": texte_affiche})
                 except Exception as e:
-                    self.logger.warning(f"⚠️ Erreur de parsing date historique pour {nom_alliance} : {e}")
+                    logger.warning(f"⚠️ Erreur de parsing date historique pour {nom_alliance} : {e}")
                     continue
 
         lbl_date = t(langue, "guerre_lbl_date_data", defaut="⏱️ **Données datées de :**")
@@ -2229,6 +2280,7 @@ class ProfilsCog(commands.Cog):
             await interaction.followup.send(embed=embeds[0], view=view)
 
     @alliance_group.command(name="scanner", description="Analyze the enemy roster in real time (Doves, PP, Targets)")
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     async def alliance_scanner(self, interaction: discord.Interaction, alliance_name: str):
         try:

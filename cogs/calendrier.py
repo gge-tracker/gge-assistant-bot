@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from discord import app_commands
 from discord.ext import commands, tasks
 
+import observability as obs
 from utils import (
     CONFIG_DIR,
     DICT_EMOJIS,
@@ -207,6 +208,7 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
     @app_commands.describe(channel="The text-based event lounge")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.guild_id)
     async def c_setup(self, interaction: discord.Interaction, channel: discord.TextChannel):
         await interaction.response.defer(ephemeral=True)
 
@@ -224,6 +226,15 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
 
         await save_calendrier_async(data)
 
+        # Enregistrement Télémétrie d'engagement
+        obs.record_guild_event(
+            "calendar_setup",
+            guild=interaction.guild,
+            user_id=interaction.user.id,
+            gge_server=serveur,
+            new_value=f"channel:{channel.id}"
+        )
+
         msg = t(
             langue,
             "cal_setup_success",
@@ -236,9 +247,10 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     @app_commands.describe(alliance_name="Name of the alliance to follow")
     @app_commands.guild_only()
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.guild_id)
     async def c_track(self, interaction: discord.Interaction, alliance_name: str):
         await interaction.response.defer(ephemeral=True)
-        langue, _ = await get_server_config(interaction)
+        langue, serveur = await get_server_config(interaction)
 
         data = await load_calendrier_async()
         guild_id = str(interaction.guild_id)
@@ -258,6 +270,15 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
 
         tracked.append(alliance_name)
         await save_calendrier_async(data)
+
+        obs.record_guild_event(
+            "calendar_track_alliance",
+            guild=interaction.guild,
+            user_id=interaction.user.id,
+            gge_server=serveur,
+            new_value=alliance_name
+        )
+
         msg_success = t(
             langue,
             "cal_track_success",
@@ -270,9 +291,10 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     @app_commands.describe(alliance_name="Name of the alliance to be withdrawn")
     @app_commands.guild_only()
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.guild_id)
     async def c_untrack(self, interaction: discord.Interaction, alliance_name: str):
         await interaction.response.defer(ephemeral=True)
-        langue, _ = await get_server_config(interaction)
+        langue, serveur = await get_server_config(interaction)
 
         data = await load_calendrier_async()
         guild_id = str(interaction.guild_id)
@@ -309,9 +331,10 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
     @app_commands.command(name="stop", description="Disable calendar alerts and event reports for this server")
     @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.guild_id)
     async def c_stop(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        langue, _ = await get_server_config(interaction)
+        langue, serveur = await get_server_config(interaction)
 
         data = await load_calendrier_async()
         guild_id = str(interaction.guild_id)
@@ -319,6 +342,13 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
         if guild_id in data.get("guilds", {}) and data["guilds"][guild_id].get("channel_id") is not None:
             data["guilds"][guild_id]["channel_id"] = None
             await save_calendrier_async(data)
+
+            obs.record_guild_event(
+                "calendar_stop",
+                guild=interaction.guild,
+                user_id=interaction.user.id,
+                gge_server=serveur
+            )
 
             msg = t(
                 langue,
@@ -331,6 +361,7 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             await interaction.followup.send(msg_fail)
 
     @app_commands.command(name="current", description="Displays the complete calendar of events")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def c_current(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
         langue, _ = await get_server_config(interaction)
@@ -515,14 +546,17 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
                 return found_events
         except Exception as e:
             logger.error(f"❌ [Calendrier] Erreur BS4 : {e}")
+            obs.record_error(source="background", scope="parse_live_calendar", exception=e, cog="calendar")
             return []
 
     @tasks.loop(minutes=1)
     async def check_newshub_calendar_task(self):
+        obs.set_task_name("check_newshub_calendar_task")
         try:
             await self._run_calendar_check()
-        except Exception:
+        except Exception as e:
             logger.error(f"❌ [CALENDRIER CRASH] : {traceback.format_exc()}")
+            obs.record_error(source="task", scope="check_newshub_calendar_task", exception=e, cog="calendar", severity="warning")
 
     async def _run_calendar_check(self):
         maintenant = datetime.now()
@@ -624,8 +658,16 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
 
                                 try:
                                     await channel.send(embed=embed_start)
-                                except:
-                                    pass
+                                    obs.record_alert(
+                                        source="calendar", alert_type="start", gge_server=serveur_cible,
+                                        channel="guild", recipients=1, delivered=1, failed=0, dm_blocked=0
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Erreur d'envoi alerte début calendrier : {e}")
+                                    obs.record_alert(
+                                        source="calendar", alert_type="start", gge_server=serveur_cible,
+                                        channel="guild", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                    )
 
                 notified.append(uid_start)
                 modifie = True
@@ -666,8 +708,16 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
                                 await setup_embed_footer(embed_end, None, langue)
                                 try:
                                     await channel.send(embed=embed_end)
-                                except:
-                                    pass
+                                    obs.record_alert(
+                                        source="calendar", alert_type="end", gge_server=serveur_cible,
+                                        channel="guild", recipients=1, delivered=1, failed=0, dm_blocked=0
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Erreur d'envoi alerte fin calendrier : {e}")
+                                    obs.record_alert(
+                                        source="calendar", alert_type="end", gge_server=serveur_cible,
+                                        channel="guild", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                    )
 
                                 tracked = g_info.get("tracked_alliances", [])
                                 if tracked and meta.get("tracker_name"):

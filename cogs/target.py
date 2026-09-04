@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import observability as obs
 import utils
 from utils import (
     BASE_DATA_PATH,
@@ -409,7 +410,7 @@ class TargetWizard(discord.ui.View):
 
             async def finish_cb(i):
                 self.step = 8
-                self.save_config()
+                self.save_config(interaction=i)
                 await self.update_view(i)
 
             b_finish.callback = finish_cb
@@ -449,7 +450,7 @@ class TargetWizard(discord.ui.View):
             await interaction.response.edit_message(content=None, embed=embed, view=self)
             self.message = interaction.message
 
-    def save_config(self):
+    def save_config(self, interaction: discord.Interaction = None):
         path_users = CONFIG_DIR / "target.json"
         try:
             data = {}
@@ -460,6 +461,15 @@ class TargetWizard(discord.ui.View):
             with open(path_users, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             utils.clear_config_cache()
+            
+            # Enregistrement Télémétrie : Un utilisateur a mis à jour ses filtres
+            if interaction and interaction.guild:
+                obs.record_guild_event(
+                    "target_setup",
+                    guild=interaction.guild,
+                    user_id=interaction.user.id,
+                    new_value=f"lvl:{self.config.get('lvl_min', -1)}-{self.config.get('lvl_max', -1)}|pp:{self.config.get('pp_min', -1)}-{self.config.get('pp_max', -1)}"
+                )
         except Exception as e:
             logger.error(f"Error saving user config : {e}")
 
@@ -614,6 +624,7 @@ class TargetCog(commands.Cog):
     target_group = app_commands.Group(name="target", description="Search engine to find specific targets on the map")
 
     @target_group.command(name="setup", description="Set up your search engine filters")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def target_setup(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
         user_id = str(interaction.user.id)
@@ -623,6 +634,7 @@ class TargetCog(commands.Cog):
         await wizard.start(interaction)
 
     @target_group.command(name="search", description="Launch the radar based on your active filters")
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(origin_player=joueur_autocomplete)
     @app_commands.autocomplete(target_alliance=alliance_autocomplete)
     async def target_search(self, interaction: discord.Interaction, origin_player: str, target_alliance: str = None):

@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+import observability as obs
 from utils import (
     CONFIG_DIR,
     TRACKER_EVENTS,
@@ -303,6 +304,7 @@ class EventsCog(commands.Cog):
         self.rival_check_task.cancel()
 
     @app_commands.command(name="event_player", description="View a player's latest score or history")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(event_name=event_autocomplete)
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.choices(
@@ -372,6 +374,7 @@ class EventsCog(commands.Cog):
                     snapshots = (await resp.json()).get("snapshots", [])
             except Exception as e:
                 logger.error(f"❌ ERREUR API Aquamarine : {str(e)}")
+                obs.record_error(source="command", scope="event_player_aquamarine", exception=e, cog="events")
                 return await interaction.followup.send(
                     t(
                         langue,
@@ -603,6 +606,7 @@ class EventsCog(commands.Cog):
                     )
                 stats_data = await resp.json()
         except Exception as e:
+            obs.record_error(source="command", scope="event_player", exception=e, cog="events")
             return await interaction.followup.send(
                 t(
                     langue,
@@ -850,6 +854,7 @@ class EventsCog(commands.Cog):
             await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
     @app_commands.command(name="event_alliance", description="Ranking and participation of an alliance in an event")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(event_name=event_alliance_autocomplete)
     @app_commands.autocomplete(alliance_name=alliance_autocomplete)
     @app_commands.choices(
@@ -873,15 +878,19 @@ class EventsCog(commands.Cog):
         if not event_keys:
             return await interaction.followup.send(t(langue, "ev_err_unknown", defaut="{e_error} Événement inconnu."))
 
-        embed, error_or_lignes, stats_text, global_latest_str = await generer_rapport_alliance_embed(
-            self.bot,
-            event_trad,
-            event_keys,
-            alliance_name,
-            self.clr_alliance,
-            interaction=interaction,
-            custom_server=serveur,
-        )
+        try:
+            embed, error_or_lignes, stats_text, global_latest_str = await generer_rapport_alliance_embed(
+                self.bot,
+                event_trad,
+                event_keys,
+                alliance_name,
+                self.clr_alliance,
+                interaction=interaction,
+                custom_server=serveur,
+            )
+        except Exception as e:
+            obs.record_error(source="command", scope="event_alliance", exception=e, cog="events")
+            return await interaction.followup.send(f"{{e_error}} Erreur interne : {e}")
 
         if not embed:
             return await interaction.followup.send(f"{{e_error}} {error_or_lignes}")
@@ -940,6 +949,7 @@ class EventsCog(commands.Cog):
         await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
 
     @app_commands.command(name="link_account", description="Link your Discord account to your GGE username")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def link_account(self, interaction: discord.Interaction, player: str):
         data = await load_pseudos_async()
@@ -961,6 +971,7 @@ class EventsCog(commands.Cog):
     )
 
     @rival_group.command(name="start", description="Turn on your competition radar")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(event_name=event_autocomplete)
     async def rival_start(self, interaction: discord.Interaction, event_name: str, threshold: int = 90):
         langue, serveur = await get_server_config(interaction)
@@ -998,6 +1009,7 @@ class EventsCog(commands.Cog):
         await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
     @rival_group.command(name="add", description="Add rivals (Max 10)")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def rival_add(
         self,
         interaction: discord.Interaction,
@@ -1027,6 +1039,7 @@ class EventsCog(commands.Cog):
         )
 
     @rival_group.command(name="list", description="Show your rivals")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def rival_list(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
         if interaction.guild:
@@ -1055,6 +1068,7 @@ class EventsCog(commands.Cog):
         await prompt_vote_if_lucky(interaction, probability_percent=5, langue=langue)
 
     @rival_group.command(name="stop", description="Turn off the radar")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def rival_stop(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
         data = await load_rivals_async()
@@ -1065,6 +1079,7 @@ class EventsCog(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def rival_check_task(self):
+        obs.set_task_name("rival_check_task")
         try:
             maintenant = discord.utils.utcnow()
 
@@ -1208,8 +1223,21 @@ class EventsCog(commands.Cog):
                             try:
                                 user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
                                 await user.send(embed=embeds_locales.get(langue, embeds_locales["fr"]))
-                            except:
-                                pass
+                                obs.record_alert(
+                                    source="rival", alert_type="overtake" if diff > 0 else "danger",
+                                    gge_server=serveur, channel="dm", recipients=1, delivered=1, failed=0, dm_blocked=0
+                                )
+                            except discord.Forbidden:
+                                obs.record_alert(
+                                    source="rival", alert_type="overtake" if diff > 0 else "danger",
+                                    gge_server=serveur, channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=1
+                                )
+                            except Exception as e:
+                                logger.error(f"❌ Erreur envoi MP Rival: {e}")
+                                obs.record_alert(
+                                    source="rival", alert_type="overtake" if diff > 0 else "danger",
+                                    gge_server=serveur, channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                )
 
                         last_scores[rival] = score_rival
                         changes_detected = True
@@ -1221,10 +1249,12 @@ class EventsCog(commands.Cog):
 
         except Exception as e:
             logger.error(f"❌ [RIVAL TASK CRASH] : {e}")
+            obs.record_error(source="task", scope="rival_check_task", exception=e, cog="events", severity="critical")
 
     woa = app_commands.Group(name="woa", description="Analysis and statistics of the Wheel of Affluence")
 
     @woa.command(name="history", description="View the history of tickets spent by a player")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     async def woa_historique(self, interaction: discord.Interaction, player: str):
         try:
@@ -1360,11 +1390,11 @@ class EventsCog(commands.Cog):
             view.message = await interaction.followup.send(embed=embeds[0], view=view, wait=True)
             await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
         except Exception as e:
-            await interaction.followup.send(
-                t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur technique : {e}")
-            )
+            obs.record_error(source="command", scope="woa_history", exception=e, cog="events")
+            await interaction.followup.send(t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur : {e}"))
 
     @woa.command(name="summary", description="Displays the ticket consumption summary")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def woa_bilan(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(thinking=True)
@@ -1452,11 +1482,13 @@ class EventsCog(commands.Cog):
             view.message = await interaction.followup.send(embed=embeds[0], view=view, wait=True)
             await prompt_vote_if_lucky(interaction, probability_percent=8, langue=langue)
         except Exception as e:
+            obs.record_error(source="command", scope="woa_summary", exception=e, cog="events")
             await interaction.followup.send(t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur : {e}"))
 
     leaderboard = app_commands.Group(name="leaderboard", description="General server rankings")
 
     @leaderboard.command(name="woa", description="Displays the Top 100 from the latest Wheel of Affluence")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def classement_woa(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(thinking=True)
@@ -1535,9 +1567,11 @@ class EventsCog(commands.Cog):
             view.message = await interaction.followup.send(embed=embeds[0], view=view, wait=True)
             await prompt_vote_if_lucky(interaction, probability_percent=10, langue=langue)
         except Exception as e:
+            obs.record_error(source="command", scope="leaderboard_woa", exception=e, cog="events")
             await interaction.followup.send(t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur : {e}"))
 
     @leaderboard.command(name="storm_islands", description="Displays the Top 100 looters of Aquamarine")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def classement_iles(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(thinking=True)
@@ -1648,6 +1682,7 @@ class EventsCog(commands.Cog):
             view.message = await interaction.followup.send(embed=embeds[0], view=view, wait=True)
             await prompt_vote_if_lucky(interaction, probability_percent=15, langue=langue)
         except Exception as e:
+            obs.record_error(source="command", scope="leaderboard_storm_islands", exception=e, cog="events")
             await interaction.followup.send(
                 t(langue, "ev_err_tech", e=str(e), defaut=f"{{e_error}} Erreur technique : {e}")
             )

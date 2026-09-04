@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import observability as obs
 from utils import (
     ADMINS_DIR,
     BOT_VERSION,
@@ -291,6 +292,7 @@ class AideCog(commands.Cog):
         self.clr_contact = discord.Color.from_rgb(247, 226, 173)
 
     @app_commands.command(name="help", description="Displays the complete user manual for the GGE Assistant bot")
+    @app_commands.checks.cooldown(1, 3.0, key=lambda i: i.user.id)
     async def aide_commande(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(ephemeral=False)
@@ -319,6 +321,7 @@ class AideCog(commands.Cog):
     @app_commands.command(
         name="status", description="Checks the overall health status of the system (Bot, NAS Storage, GGE-Tracker API)"
     )
+    @app_commands.checks.cooldown(1, 3.0, key=lambda i: i.user.id)
     async def statut_commande(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(thinking=True)
@@ -393,6 +396,7 @@ class AideCog(commands.Cog):
                 error=str(e),
                 defaut=f"{{e_error}} Erreur de lecture de l'espace de stockage : {e}",
             )
+            obs.record_error(source="command", scope="status_disk", exception=e, cog="aide")
 
         embed.add_field(
             name=t(langue, "statut_storage_title", defaut="💾 Stockage Interne"), value=storage_txt, inline=False
@@ -490,6 +494,7 @@ class AideCog(commands.Cog):
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="discover", description="Discover useful tools and community projects for GGE")
+    @app_commands.checks.cooldown(1, 3.0, key=lambda i: i.user.id)
     async def discover(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
 
@@ -535,6 +540,7 @@ class AideCog(commands.Cog):
             view.message = await interaction.original_response()
 
     @app_commands.command(name="support", description="Get the invite link to the official support server")
+    @app_commands.checks.cooldown(1, 3.0, key=lambda i: i.user.id)
     async def support(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
 
@@ -558,6 +564,7 @@ class AideCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="vote", description="Support the bot by voting on Top.gg")
+    @app_commands.checks.cooldown(1, 3.0, key=lambda i: i.user.id)
     async def vote(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
 
@@ -580,6 +587,7 @@ class AideCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="news", description="Read the latest bot updates and patch notes")
+    @app_commands.checks.cooldown(1, 3.0, key=lambda i: i.user.id)
     async def news(self, interaction: discord.Interaction):
         langue, _ = await get_server_config(interaction)
 
@@ -602,6 +610,7 @@ class AideCog(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="contact", description="Send a problem, bug, or suggestion directly to the developer")
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)
     @app_commands.describe(message="Write your problem or suggestion in detail here")
     async def contact_commande(self, interaction: discord.Interaction, message: str):
         try:
@@ -613,6 +622,13 @@ class AideCog(commands.Cog):
 
         logger.info(f"📩 [Contact] Nouveau message de {interaction.user.name} ({interaction.user.id})")
         maintenant_iso = discord.utils.utcnow().isoformat().replace("+00:00", "Z")
+        
+        obs.record_guild_event(
+            "user_contact",
+            guild=interaction.guild,
+            user_id=interaction.user.id,
+            new_value="contact_form_submitted"
+        )
 
         async with get_file_lock(CONTACTS_FILE):
             try:

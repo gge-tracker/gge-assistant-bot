@@ -11,6 +11,8 @@ from pathlib import Path
 import discord
 from discord import app_commands
 
+import observability as obs
+
 logger = logging.getLogger("GGE_Bot")
 
 # ========================================
@@ -53,7 +55,8 @@ async def get_server_config(interaction: discord.Interaction):
             try:
                 with open(path_users, encoding="utf-8") as f:
                     USERS_CONFIG_CACHE = json.load(f)
-            except:
+            except Exception as e:
+                obs.record_error(source="utils", scope="load_users_config", exception=e, cog="utils")
                 USERS_CONFIG_CACHE = {}
         else:
             USERS_CONFIG_CACHE = {}
@@ -71,7 +74,8 @@ async def get_server_config(interaction: discord.Interaction):
                 try:
                     with open(path_guilds, encoding="utf-8") as f:
                         GUILDS_CONFIG_CACHE = json.load(f)
-                except:
+                except Exception as e:
+                    obs.record_error(source="utils", scope="load_guilds_config", exception=e, cog="utils")
                     GUILDS_CONFIG_CACHE = {}
             else:
                 GUILDS_CONFIG_CACHE = {}
@@ -103,6 +107,7 @@ try:
     from emojis import DICT_EMOJIS
 except ImportError as e:
     logger.error(f"❌ Impossible de charger les émojis suivants : {e}")
+    obs.record_error(source="utils", scope="import_emojis", exception=e, cog="utils")
     DICT_EMOJIS = {}
 
 _translations = {}
@@ -127,6 +132,7 @@ def charger_langues():
             logger.info(f"📚 Langue chargée : {langue.upper()} ({len(_translations[langue])} clés)")
         except Exception as e:
             logger.error(f"❌ Erreur lors du chargement de {fichier.name} : {e}")
+            obs.record_error(source="utils", scope="load_locales", exception=e, cog="utils")
 
 
 def t(langue: str, cle: str, defaut: str = None, **kwargs) -> str:
@@ -245,6 +251,7 @@ async def prompt_vote_if_lucky(interaction: discord.Interaction, probability_per
 
         except Exception as e:
             print(f"❌ [DEBUG VOTE] Erreur lors de la lecture du bouclier : {e}")
+            obs.record_error(source="utils", scope="vote_shield", exception=e, cog="utils")
 
     if random.randint(1, 100) > probability_percent:
         return
@@ -369,6 +376,7 @@ async def get_cached_data(serveur="E4K_FR1"):
                 return json.load(f).get("players", {})
         except Exception as e:
             logger.error(f"❌ [Cache] Erreur lors de la lecture lourde de {serveur} : {e}")
+            obs.record_error(source="utils", scope="cache_load", exception=e, cog="utils")
             return {}
 
     if time.time() - CACHE[serveur]["last_refresh"] > 300:
@@ -708,6 +716,7 @@ def load_maintenance():
                 return json.load(f).get("maintenance_mode", False)
         except Exception as e:
             logger.error(f"❌ Impossible de lire maintenance.json : {e}")
+            obs.record_error(source="utils", scope="load_maintenance", exception=e, cog="utils")
     return False
 
 
@@ -725,6 +734,7 @@ async def load_blocks_async():
                     return BLOCKS_CACHE
             except Exception as e:
                 logger.error(f"❌ Fichier blocks.json corrompu ou illisible : {e}")
+                obs.record_error(source="utils", scope="load_blocks", exception=e, cog="utils")
 
     BLOCKS_CACHE = {"global_commands": {}, "blocked_users": {}}
     return BLOCKS_CACHE
@@ -748,6 +758,7 @@ async def load_configuration_async():
                     return json.load(f)
             except Exception as e:
                 logger.error(f"❌ Erreur configuration.json : {e}")
+                obs.record_error(source="utils", scope="load_configuration", exception=e, cog="utils")
         return {"servers_info": {}}
 
 
@@ -767,6 +778,7 @@ async def load_pseudos_async():
                     return json.load(f)
             except Exception as e:
                 logger.error(f"❌ Erreur discord_pseudos.json : {e}")
+                obs.record_error(source="utils", scope="load_pseudos", exception=e, cog="utils")
     return {}
 
 
@@ -786,6 +798,7 @@ async def load_rivals_async():
                     return json.load(f)
             except Exception as e:
                 logger.error(f"❌ Erreur rival_radar.json : {e}")
+                obs.record_error(source="utils", scope="load_rivals", exception=e, cog="utils")
     return {}
 
 
@@ -805,6 +818,7 @@ async def load_dungeons_async():
                     return json.load(f)
             except Exception as e:
                 logger.error(f"❌ Erreur forteresses_sessions.json : {e}")
+                obs.record_error(source="utils", scope="load_dungeons", exception=e, cog="utils")
     return {"sessions": {}}
 
 
@@ -824,6 +838,7 @@ async def load_maintenance_async():
                     return json.load(f).get("maintenance_mode", False)
             except Exception as e:
                 logger.error(f"❌ Erreur maintenance.json : {e}")
+                obs.record_error(source="utils", scope="load_maintenance_async", exception=e, cog="utils")
     return False
 
 
@@ -846,6 +861,7 @@ async def load_surveillance_async():
                     return data
             except Exception as e:
                 logger.error(f"❌ Erreur surveillance.json : {e}")
+                obs.record_error(source="utils", scope="load_surveillance", exception=e, cog="utils")
     return {"players": {}, "alliances": {}}
 
 

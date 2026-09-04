@@ -2,12 +2,14 @@ import asyncio
 import json
 import logging
 import os
+import traceback
 import urllib.parse
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+import observability as obs
 from utils import (
     DICT_EMOJIS,
     PaginationView,
@@ -351,6 +353,7 @@ class ClassementCog(commands.Cog):
         return embed
 
     @classement.command(name="statistics", description="Displays a live ranking for player statistics.")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(
         statistic="Catégorie", player="Pseudo (Optionnel)", rank="Rang (Optionnel)", tranche="Tranche (Optionnel)"
     )
@@ -504,39 +507,43 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not player_found:
-                task_lids = []
-                task_coros = []
-                for lid in possible_lids:
-                    for i in range(BATCH_SIZE):
-                        sv_val = current_sv + (i * PLAYERS_PER_PAGE)
-                        if sv_val > max_sv_limit:
-                            break
-                        task_lids.append(lid)
-                        task_coros.append(fetch_chunk(sv_val, lid))
+            try:
+                while current_sv <= max_sv_limit and not player_found:
+                    task_lids = []
+                    task_coros = []
+                    for lid in possible_lids:
+                        for i in range(BATCH_SIZE):
+                            sv_val = current_sv + (i * PLAYERS_PER_PAGE)
+                            if sv_val > max_sv_limit:
+                                break
+                            task_lids.append(lid)
+                            task_coros.append(fetch_chunk(sv_val, lid))
 
-                if not task_coros:
-                    break
-                responses = await asyncio.gather(*task_coros)
-                batch_empty = True
+                    if not task_coros:
+                        break
+                    responses = await asyncio.gather(*task_coros)
+                    batch_empty = True
 
-                for i, jsonData in enumerate(responses):
-                    lid = task_lids[i]
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            accumulated_data[lid].extend(l_chunk)
-                            batch_empty = False
+                    for i, jsonData in enumerate(responses):
+                        lid = task_lids[i]
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                accumulated_data[lid].extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank and not player_found:
-                                for p in l_chunk:
-                                    if extract_p_name(p).lower() == loc_player.lower():
-                                        player_found = True
-                                        found_lid = lid
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank and not player_found:
+                                    for p in l_chunk:
+                                        if extract_p_name(p).lower() == loc_player.lower():
+                                            player_found = True
+                                            found_lid = lid
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de statistics : {e}")
+                obs.record_error(source="command", scope="rank_statistics", exception=e, cog="classement")
 
             has_any_data = any(len(data) > 0 for data in accumulated_data.values())
             if not has_any_data:
@@ -647,6 +654,7 @@ class ClassementCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
     @classement.command(name="event", description="Displays an event's live ranking.")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(
         evenement="Événement", player="Pseudo (Optionnel)", rank="Rang (Optionnel)", tranche="Tranche (Optionnel)"
     )
@@ -798,39 +806,43 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not player_found:
-                task_lids = []
-                task_coros = []
-                for lid in possible_lids:
-                    for i in range(BATCH_SIZE):
-                        sv_val = current_sv + (i * PLAYERS_PER_PAGE)
-                        if sv_val > max_sv_limit:
-                            break
-                        task_lids.append(lid)
-                        task_coros.append(fetch_chunk(sv_val, lid))
+            try:
+                while current_sv <= max_sv_limit and not player_found:
+                    task_lids = []
+                    task_coros = []
+                    for lid in possible_lids:
+                        for i in range(BATCH_SIZE):
+                            sv_val = current_sv + (i * PLAYERS_PER_PAGE)
+                            if sv_val > max_sv_limit:
+                                break
+                            task_lids.append(lid)
+                            task_coros.append(fetch_chunk(sv_val, lid))
 
-                if not task_coros:
-                    break
-                responses = await asyncio.gather(*task_coros)
-                batch_empty = True
+                    if not task_coros:
+                        break
+                    responses = await asyncio.gather(*task_coros)
+                    batch_empty = True
 
-                for i, jsonData in enumerate(responses):
-                    lid = task_lids[i]
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            accumulated_data[lid].extend(l_chunk)
-                            batch_empty = False
+                    for i, jsonData in enumerate(responses):
+                        lid = task_lids[i]
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                accumulated_data[lid].extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank and not player_found:
-                                for p in l_chunk:
-                                    if extract_p_name(p).lower() == loc_player.lower():
-                                        player_found = True
-                                        found_lid = lid
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank and not player_found:
+                                    for p in l_chunk:
+                                        if extract_p_name(p).lower() == loc_player.lower():
+                                            player_found = True
+                                            found_lid = lid
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de event : {e}")
+                obs.record_error(source="command", scope="rank_event", exception=e, cog="classement")
 
             has_any_data = any(len(data) > 0 for data in accumulated_data.values())
             if not has_any_data:
@@ -948,6 +960,7 @@ class ClassementCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
     @classement.command(name="gacha", description="Displays a live ranking for Gacha events")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(evenement="Événement", player="Pseudo (Optionnel)", rank="Rang (Optionnel)")
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.choices(
@@ -1059,39 +1072,43 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not player_found:
-                task_lids = []
-                task_coros = []
-                for lid in possible_lids:
-                    for i in range(BATCH_SIZE):
-                        sv_val = current_sv + (i * PLAYERS_PER_PAGE)
-                        if sv_val > max_sv_limit:
-                            break
-                        task_lids.append(lid)
-                        task_coros.append(fetch_chunk(sv_val, lid))
+            try:
+                while current_sv <= max_sv_limit and not player_found:
+                    task_lids = []
+                    task_coros = []
+                    for lid in possible_lids:
+                        for i in range(BATCH_SIZE):
+                            sv_val = current_sv + (i * PLAYERS_PER_PAGE)
+                            if sv_val > max_sv_limit:
+                                break
+                            task_lids.append(lid)
+                            task_coros.append(fetch_chunk(sv_val, lid))
 
-                if not task_coros:
-                    break
-                responses = await asyncio.gather(*task_coros)
-                batch_empty = True
+                    if not task_coros:
+                        break
+                    responses = await asyncio.gather(*task_coros)
+                    batch_empty = True
 
-                for i, jsonData in enumerate(responses):
-                    lid = task_lids[i]
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            accumulated_data[lid].extend(l_chunk)
-                            batch_empty = False
+                    for i, jsonData in enumerate(responses):
+                        lid = task_lids[i]
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                accumulated_data[lid].extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank and not player_found:
-                                for p in l_chunk:
-                                    if extract_p_name(p).lower() == loc_player.lower():
-                                        player_found = True
-                                        found_lid = lid
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank and not player_found:
+                                    for p in l_chunk:
+                                        if extract_p_name(p).lower() == loc_player.lower():
+                                            player_found = True
+                                            found_lid = lid
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de gacha : {e}")
+                obs.record_error(source="command", scope="rank_gacha", exception=e, cog="classement")
 
             has_any_data = any(len(data) > 0 for data in accumulated_data.values())
             if not has_any_data:
@@ -1191,6 +1208,7 @@ class ClassementCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
     @classement.command(name="realms", description="Displays a ranking for cross-server events")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(evenement="Événement", player="Pseudo (Optionnel)", rank="Rang (Optionnel)")
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.choices(
@@ -1295,44 +1313,48 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not player_found:
-                task_lids = []
-                task_coros = []
-                for lid in possible_lids:
-                    for i in range(BATCH_SIZE):
-                        sv_val = current_sv + (i * PLAYERS_PER_PAGE)
-                        if sv_val > max_sv_limit:
-                            break
-                        task_lids.append(lid)
-                        task_coros.append(fetch_chunk(sv_val, lid))
+            try:
+                while current_sv <= max_sv_limit and not player_found:
+                    task_lids = []
+                    task_coros = []
+                    for lid in possible_lids:
+                        for i in range(BATCH_SIZE):
+                            sv_val = current_sv + (i * PLAYERS_PER_PAGE)
+                            if sv_val > max_sv_limit:
+                                break
+                            task_lids.append(lid)
+                            task_coros.append(fetch_chunk(sv_val, lid))
 
-                if not task_coros:
-                    break
-                responses = await asyncio.gather(*task_coros)
-                batch_empty = True
+                    if not task_coros:
+                        break
+                    responses = await asyncio.gather(*task_coros)
+                    batch_empty = True
 
-                for i, jsonData in enumerate(responses):
-                    lid = task_lids[i]
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            accumulated_data[lid].extend(l_chunk)
-                            batch_empty = False
+                    for i, jsonData in enumerate(responses):
+                        lid = task_lids[i]
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                accumulated_data[lid].extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank and not player_found:
-                                for p in l_chunk:
-                                    api_name = extract_p_name(p).lower()
-                                    if api_name and (
-                                        api_name == target_name_exact
-                                        or api_name == loc_player.lower()
-                                        or api_name.startswith(f"{loc_player.lower()}_")
-                                    ):
-                                        player_found = True
-                                        found_lid = lid
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank and not player_found:
+                                    for p in l_chunk:
+                                        api_name = extract_p_name(p).lower()
+                                        if api_name and (
+                                            api_name == target_name_exact
+                                            or api_name == loc_player.lower()
+                                            or api_name.startswith(f"{loc_player.lower()}_")
+                                        ):
+                                            player_found = True
+                                            found_lid = lid
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de realms : {e}")
+                obs.record_error(source="command", scope="rank_realms", exception=e, cog="classement")
 
             has_any_data = any(len(data) > 0 for data in accumulated_data.values())
             if not has_any_data:
@@ -1426,6 +1448,7 @@ class ClassementCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
     @classement.command(name="league", description="Displays a ranking for Season and League events")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(
         evenement="Événement", player="Pseudo (Optionnel)", rank="Rang (Optionnel)", tranche="Tranche (Optionnel)"
     )
@@ -1579,39 +1602,43 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not player_found:
-                task_lids = []
-                task_coros = []
-                for lid in possible_lids:
-                    for i in range(BATCH_SIZE):
-                        sv_val = current_sv + (i * PLAYERS_PER_PAGE)
-                        if sv_val > max_sv_limit:
-                            break
-                        task_lids.append(lid)
-                        task_coros.append(fetch_chunk(sv_val, lid))
+            try:
+                while current_sv <= max_sv_limit and not player_found:
+                    task_lids = []
+                    task_coros = []
+                    for lid in possible_lids:
+                        for i in range(BATCH_SIZE):
+                            sv_val = current_sv + (i * PLAYERS_PER_PAGE)
+                            if sv_val > max_sv_limit:
+                                break
+                            task_lids.append(lid)
+                            task_coros.append(fetch_chunk(sv_val, lid))
 
-                if not task_coros:
-                    break
-                responses = await asyncio.gather(*task_coros)
-                batch_empty = True
+                    if not task_coros:
+                        break
+                    responses = await asyncio.gather(*task_coros)
+                    batch_empty = True
 
-                for i, jsonData in enumerate(responses):
-                    lid = task_lids[i]
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            accumulated_data[lid].extend(l_chunk)
-                            batch_empty = False
+                    for i, jsonData in enumerate(responses):
+                        lid = task_lids[i]
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                accumulated_data[lid].extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank and not player_found:
-                                for p in l_chunk:
-                                    if extract_p_name(p).lower() == loc_player.lower():
-                                        player_found = True
-                                        found_lid = lid
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank and not player_found:
+                                    for p in l_chunk:
+                                        if extract_p_name(p).lower() == loc_player.lower():
+                                            player_found = True
+                                            found_lid = lid
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de league : {e}")
+                obs.record_error(source="command", scope="rank_league", exception=e, cog="classement")
 
             has_any_data = any(len(data) > 0 for data in accumulated_data.values())
             if not has_any_data:
@@ -1718,6 +1745,7 @@ class ClassementCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
     @classement.command(name="contests", description="Displays a ranking for specific contests")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(
         evenement="Événement", player="Pseudo (Optionnel)", rank="Rang (Optionnel)", tranche="Tranche (Optionnel)"
     )
@@ -1881,39 +1909,43 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not player_found:
-                task_lids = []
-                task_coros = []
-                for lid in possible_lids:
-                    for i in range(BATCH_SIZE):
-                        sv_val = current_sv + (i * PLAYERS_PER_PAGE)
-                        if sv_val > max_sv_limit:
-                            break
-                        task_lids.append(lid)
-                        task_coros.append(fetch_chunk(sv_val, lid))
+            try:
+                while current_sv <= max_sv_limit and not player_found:
+                    task_lids = []
+                    task_coros = []
+                    for lid in possible_lids:
+                        for i in range(BATCH_SIZE):
+                            sv_val = current_sv + (i * PLAYERS_PER_PAGE)
+                            if sv_val > max_sv_limit:
+                                break
+                            task_lids.append(lid)
+                            task_coros.append(fetch_chunk(sv_val, lid))
 
-                if not task_coros:
-                    break
-                responses = await asyncio.gather(*task_coros)
-                batch_empty = True
+                    if not task_coros:
+                        break
+                    responses = await asyncio.gather(*task_coros)
+                    batch_empty = True
 
-                for i, jsonData in enumerate(responses):
-                    lid = task_lids[i]
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            accumulated_data[lid].extend(l_chunk)
-                            batch_empty = False
+                    for i, jsonData in enumerate(responses):
+                        lid = task_lids[i]
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                accumulated_data[lid].extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank and not player_found:
-                                for p in l_chunk:
-                                    if extract_p_name(p).lower() == loc_player.lower():
-                                        player_found = True
-                                        found_lid = lid
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank and not player_found:
+                                    for p in l_chunk:
+                                        if extract_p_name(p).lower() == loc_player.lower():
+                                            player_found = True
+                                            found_lid = lid
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de contests : {e}")
+                obs.record_error(source="command", scope="rank_contests", exception=e, cog="classement")
 
             has_any_data = any(len(data) > 0 for data in accumulated_data.values())
             if not has_any_data:
@@ -1931,7 +1963,6 @@ class ClassementCog(commands.Cog):
             found_lid = found_lid or possible_lids[-1]
             all_players_raw = accumulated_data[found_lid]
 
-            bracket_icon = get_emo(langue, "{e_icon_points}")
             if evenement in ["woa", "patronage"]:
                 nom_tranche = t(langue, "ev_bracket_all", defaut="Classement Global")
             elif evenement == "shapeshifters":
@@ -1969,7 +2000,6 @@ class ClassementCog(commands.Cog):
                         page_cible = i
                         break
 
-            warning_msg = ""
             if search_mode and not player_found:
                 if loc_rank:
                     warning_msg += f"\n\n*💡 Info : Le joueur **{loc_player}** n'a pas été trouvé. Voici le rang {loc_rank} à la place.*"
@@ -1977,19 +2007,7 @@ class ClassementCog(commands.Cog):
                     warning_msg += f"\n\n*💡 Info : Le joueur **{loc_player}** n'a pas été trouvé dans le Top {max_sv_limit}. Voici la première page par défaut.*"
                     page_cible = 0
 
-            if evenement == "flora":
-                embed_color = discord.Color(0x81C24A)
-            elif evenement == "snowglobe":
-                embed_color = discord.Color(0xFFFFFF)
-            elif evenement == "hollowmoon":
-                embed_color = discord.Color(0xFF8D00)
-            elif evenement == "sandfortune":
-                embed_color = discord.Color(0xFFE29C)
-            elif evenement == "midnight":
-                embed_color = discord.Color(0x282442)
-            else:
-                embed_color = discord.Color.gold()
-
+            embed_color = discord.Color.gold()
             embeds = []
             for i, chunk in enumerate(chunks):
                 embed = self.format_page(
@@ -2024,6 +2042,7 @@ class ClassementCog(commands.Cog):
         view.message = await interaction.followup.send(embed=embeds[page_cible], view=view, wait=True)
 
     @classement.command(name="alliance", description="Displays live rankings and statistics for alliances")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.describe(
         categorie="Événement", alliance_name="Nom de l'alliance (Optionnel)", rank="Rang (Optionnel)"
     )
@@ -2153,36 +2172,40 @@ class ClassementCog(commands.Cog):
                     await asyncio.sleep(0.3)
                 return None
 
-            while current_sv <= max_sv_limit and not alliance_found:
-                tasks = [
-                    fetch_chunk(current_sv + (i * PLAYERS_PER_PAGE))
-                    for i in range(BATCH_SIZE)
-                    if current_sv + (i * PLAYERS_PER_PAGE) <= max_sv_limit
-                ]
-                if not tasks:
-                    break
+            try:
+                while current_sv <= max_sv_limit and not alliance_found:
+                    tasks = [
+                        fetch_chunk(current_sv + (i * PLAYERS_PER_PAGE))
+                        for i in range(BATCH_SIZE)
+                        if current_sv + (i * PLAYERS_PER_PAGE) <= max_sv_limit
+                    ]
+                    if not tasks:
+                        break
 
-                responses = await asyncio.gather(*tasks)
-                batch_empty = True
+                    responses = await asyncio.gather(*tasks)
+                    batch_empty = True
 
-                for jsonData in responses:
-                    if jsonData and str(jsonData.get("return_code")) == "0":
-                        l_chunk = jsonData.get("content", {}).get("L", [])
-                        if l_chunk:
-                            all_alliances_raw.extend(l_chunk)
-                            batch_empty = False
+                    for jsonData in responses:
+                        if jsonData and str(jsonData.get("return_code")) == "0":
+                            l_chunk = jsonData.get("content", {}).get("L", [])
+                            if l_chunk:
+                                all_alliances_raw.extend(l_chunk)
+                                batch_empty = False
 
-                            if search_mode and not loc_rank:
-                                for p in l_chunk:
-                                    api_name = extract_p_name(p).lower()
-                                    if api_name == loc_alliance.lower() or api_name.startswith(
-                                        f"{loc_alliance.lower()}_"
-                                    ):
-                                        alliance_found = True
-                                        break
-                if batch_empty:
-                    break
-                current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+                                if search_mode and not loc_rank:
+                                    for p in l_chunk:
+                                        api_name = extract_p_name(p).lower()
+                                        if api_name == loc_alliance.lower() or api_name.startswith(
+                                            f"{loc_alliance.lower()}_"
+                                        ):
+                                            alliance_found = True
+                                            break
+                    if batch_empty:
+                        break
+                    current_sv += BATCH_SIZE * PLAYERS_PER_PAGE
+            except Exception as e:
+                self.logger.error(f"❌ Erreur lors du fetch de alliance : {e}")
+                obs.record_error(source="command", scope="rank_alliance", exception=e, cog="classement")
 
             if not all_alliances_raw:
                 embed_empty = discord.Embed(

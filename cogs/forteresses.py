@@ -11,6 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+import observability as obs
 from emojis import DICT_EMOJIS
 from utils import (
     CONFIG_DIR,
@@ -151,6 +152,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
                         }
         except Exception as e:
             logger.error(f"❌ [VERIFY] Erreur API lors de la vérification globale : {e}")
+            obs.record_error(source="background", scope="verify_and_send", exception=e, cog="forteresses")
 
         embed = discord.Embed(
             title=t(langue, "fort_verify_title", defaut="{e_icon_search} Résultat de la vérification"),
@@ -367,6 +369,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
         except Exception as e:
             logger.error(f"❌ [FORTERESSES] Erreur API Globale: {e}")
+            obs.record_error(source="background", scope="fetch_cibles", exception=e, cog="forteresses")
 
         last_scan_str = await self.fetch_meta_scan(session, headers)
         lbl_last_scan = t(langue, "fort_lbl_last_scan", defaut="Dernier scan API :")
@@ -501,6 +504,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         return False, None, []
 
     @app_commands.command(name="scan", description="Activates the automatic radar of the free fortresses")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.describe(
         player="The player's username to center the search on",
@@ -573,6 +577,16 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         data["sessions"][user_id] = info_session
         await save_dungeons_async(data)
 
+        # Enregistrement Télémétrie
+        if interaction.guild:
+            obs.record_guild_event(
+                "fortress_scan_started",
+                guild=interaction.guild,
+                user_id=interaction.user.id,
+                gge_server=serveur,
+                new_value=f"player:{nom_joueur}|kids:{kids}|dur:{duree_val}"
+            )
+
         ts_fin = int(end_time.timestamp())
         noms_royaumes = []
         if 1 in kids:
@@ -638,13 +652,14 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
         await prompt_vote_if_lucky(interaction, probability_percent=15, langue=langue)
 
     @app_commands.command(name="stop", description="Stop your fortress scanning session")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     async def f_stop(self, interaction: discord.Interaction):
         try:
             await interaction.response.defer(ephemeral=False, thinking=True)
         except:
             return
 
-        langue, _ = await get_server_config(interaction)
+        langue, serveur = await get_server_config(interaction)
         data = await load_dungeons_async()
         user_id = str(interaction.user.id)
 
@@ -652,6 +667,16 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             del data["sessions"][user_id]
             await save_dungeons_async(data)
             logger.info(f"🛑 [FORTERESSES] {interaction.user.name} a stoppé son scan radar.")
+            
+            # Enregistrement Télémétrie
+            if interaction.guild:
+                obs.record_guild_event(
+                    "fortress_scan_stopped",
+                    guild=interaction.guild,
+                    user_id=interaction.user.id,
+                    gge_server=serveur
+                )
+                
             await interaction.followup.send(
                 t(
                     langue,
@@ -669,6 +694,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
     @tasks.loop(minutes=1)
     async def dungeon_spy_task(self):
+        obs.set_task_name("dungeon_spy_task")
         try:
             data = await load_dungeons_async()
             sessions = data.get("sessions", {})
@@ -741,16 +767,32 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
                             f"📤 [FORTERESSES] Envoi automatique de nouvelles cibles à {user.name} ({user_id}) pour {joueur}."
                         )
                         await user.send(embed=embed_cibles, view=view)
+                        
+                        obs.record_alert(
+                            source="fortress", alert_type="spawned", gge_server=serveur,
+                            channel="dm", recipients=1, delivered=1, failed=0, dm_blocked=0
+                        )
+                    except discord.Forbidden:
+                        obs.record_alert(
+                            source="fortress", alert_type="spawned", gge_server=serveur,
+                            channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=1
+                        )
                     except Exception as e:
                         logger.error(f"❌ [FORTERESSES] Erreur d'envoi MP à {user_id}: {e}")
+                        obs.record_alert(
+                            source="fortress", alert_type="spawned", gge_server=serveur,
+                            channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=0
+                        )
 
             if sessions_modifiees:
                 await save_dungeons_async(data)
 
         except Exception as e:
             logger.error(f"❌ [FORTERESSES CRASH] : {traceback.format_exc()}")
+            obs.record_error(source="task", scope="dungeon_spy_task", exception=e, cog="forteresses", severity="critical")
 
     @app_commands.command(name="history", description="View a player's fortress attack history (up to 365 days)")
+    @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)
     @app_commands.autocomplete(player=joueur_autocomplete)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def f_history(self, interaction: discord.Interaction, player: str):

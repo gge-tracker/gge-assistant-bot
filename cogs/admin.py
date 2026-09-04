@@ -4,11 +4,15 @@ import json
 import logging
 import os
 import re
+import traceback
 from datetime import datetime, timedelta
 
 import discord
-from discord.ext import commands
+from bs4 import BeautifulSoup
+from discord import app_commands
+from discord.ext import commands, tasks
 
+import observability as obs
 from utils import (
     ADMINS_DIR,
     BASE_DIR,
@@ -156,6 +160,7 @@ class AdminCog(commands.Cog):
             msg_err = t(
                 self.admin_lang, "admin_sync_error", error=str(e), defaut=f"❌ Erreur lors de la synchronisation : {e}"
             )
+            obs.record_error(source="admin", scope="sync", exception=e, cog="admin")
             await msg.edit(content=msg_err)
 
     @commands.command(name="reload", hidden=True)
@@ -166,6 +171,7 @@ class AdminCog(commands.Cog):
             await self.bot.reload_extension(extension)
             await ctx.send(f"✅ Module `{extension}` rechargé avec succès !")
         except Exception as e:
+            obs.record_error(source="admin", scope="reload", exception=e, cog="admin")
             await ctx.send(f"❌ Erreur lors du rechargement :\n```py\n{e}\n```")
 
     @commands.command(name="restart", aliases=["reboot"], hidden=True)
@@ -450,6 +456,7 @@ class AdminCog(commands.Cog):
 
         except Exception as e:
             logger.error(f"❌ [Admin] Erreur lors de la synchronisation forcée des serveurs : {e}")
+            obs.record_error(source="admin", scope="sync_servers", exception=e, cog="admin")
             await msg_wait.edit(content=f"❌ Erreur lors de la synchronisation : `{e}`")
 
     @commands.command(name="scan_manuel", hidden=True)
@@ -470,6 +477,7 @@ class AdminCog(commands.Cog):
                 await ctx.send("✅ **Scan global terminé avec succès !**")
             except Exception as e:
                 logger.error(f"❌ Erreur critique scan manuel (ALL) : {e}")
+                obs.record_error(source="admin", scope="scan_manuel_all", exception=e, cog="admin")
                 await ctx.send(f"⚠️ **Erreur lors de l'exécution (ALL) :**\n```py\n{e}\n```")
         else:
             await ctx.send(f"⏳ **Lancement du scanner ciblé sur le serveur : `{cible}`...**")
@@ -489,6 +497,7 @@ class AdminCog(commands.Cog):
                     )
             except Exception as e:
                 logger.error(f"❌ Erreur critique scan manuel ({cible}) : {e}")
+                obs.record_error(source="admin", scope="scan_manuel_specific", exception=e, cog="admin")
                 await ctx.send(f"⚠️ **Erreur lors de l'exécution ({cible}) :**\n```py\n{e}\n```")
 
     # ==========================================
@@ -1478,7 +1487,8 @@ class AdminCog(commands.Cog):
         try:
             with open(vigi_file, encoding="utf-8") as f:
                 cibles = json.load(f)
-        except Exception:
+        except Exception as e:
+            obs.record_error(source="background", scope="vigilance_load", exception=e, cog="admin")
             return
 
         if not cibles:
@@ -1549,6 +1559,7 @@ class AdminCog(commands.Cog):
                 await webhook.send(embed=embed, username="GGE Videur 🕵️", avatar_url=self.bot.user.display_avatar.url)
         except Exception as e:
             logger.error(f"❌ Erreur d'envoi Webhook Vigilance : {e}")
+            obs.record_error(source="event", scope="vigilance_webhook", exception=e, cog="admin")
 
 
 async def setup(bot):
