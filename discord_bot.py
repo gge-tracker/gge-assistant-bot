@@ -531,7 +531,9 @@ class GGEAssistantBot(commands.Bot):
         try:
             payload = json.loads(raw_body)
         except Exception:
-            obs.record_vote(accepted=False, reject_reason="invalid_json", signature_version="v1" if signature_header else "v0")
+            obs.record_vote(
+                accepted=False, reject_reason="invalid_json", signature_version="v1" if signature_header else "v0"
+            )
             return web.Response(status=400, text="Invalid JSON")
 
         if "data" in payload:
@@ -543,7 +545,12 @@ class GGEAssistantBot(commands.Bot):
 
         if not user_id:
             logger.error(f"❌ [Webhook] Impossible de lire l'ID dans le payload : {payload}")
-            obs.record_vote(accepted=False, reject_reason="missing_user_id", event_type=str(event_type or ""), signature_version="v1" if signature_header else "v0")
+            obs.record_vote(
+                accepted=False,
+                reject_reason="missing_user_id",
+                event_type=str(event_type or ""),
+                signature_version="v1" if signature_header else "v0",
+            )
             return web.Response(status=400, text="Missing user ID")
 
         webhook_votes = os.getenv("WEBHOOK_VOTES")

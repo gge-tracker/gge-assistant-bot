@@ -129,8 +129,12 @@ class ScanCog(commands.Cog):
         if not first_page_data or not first_page_data.get("players"):
             logger.error(f"❌ Aucun joueur trouvé ou erreur fatale pour {server}.")
             obs.record_scan_run(
-                gge_server=server, status="failed", started_at=debut_scan, kind=self._scan_kind,
-                server_index=index_actuel, servers_total=total_serveurs,
+                gge_server=server,
+                status="failed",
+                started_at=debut_scan,
+                kind=self._scan_kind,
+                server_index=index_actuel,
+                servers_total=total_serveurs,
                 error_message="Aucun joueur trouvé ou erreur fatale sur la première page",
                 **obs_stats,
             )
@@ -258,7 +262,9 @@ class ScanCog(commands.Cog):
         except Exception as e:
             logger.error(f"❌ Erreur lors du scan spécifique de {server_name} : {e}")
             logger.error(traceback.format_exc())
-            obs.record_error(source="task", scope="scan_specific_server", exception=e, cog="scan_server", gge_server=server_name)
+            obs.record_error(
+                source="task", scope="scan_specific_server", exception=e, cog="scan_server", gge_server=server_name
+            )
             raise e
         finally:
             self._scan_kind = "daily"
@@ -295,7 +301,9 @@ class ScanCog(commands.Cog):
         except Exception as e:
             logger.error(f"❌ CRASH FATAL DU SCANNER : {e}")
             logger.error(traceback.format_exc())
-            obs.record_error(source="task", scope="daily_scan", exception=e, cog="scan_server", severity="critical", notified=True)
+            obs.record_error(
+                source="task", scope="daily_scan", exception=e, cog="scan_server", severity="critical", notified=True
+            )
             await self.send_discord_alert(
                 "🚨 CRASH DU SCANNER", f"La boucle asynchrone a planté :\n```py\n{e}\n```", 16711680
             )

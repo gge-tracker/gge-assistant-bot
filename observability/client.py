@@ -37,7 +37,6 @@ def ch_datetime(when: datetime | None = None) -> str:
 
 
 class ClickHouseClient:
-
     def __init__(self, settings: ClickHouseSettings):
         self.settings = settings
         self._buffers: dict[str, deque] = {}

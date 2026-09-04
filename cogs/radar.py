@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -863,8 +862,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                         )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "infos", embeds_locales, users_lang,
-                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
+                                        abonnes_alliance,
+                                        "infos",
+                                        embeds_locales,
+                                        users_lang,
+                                        target_name=a_info.get("name", ""),
+                                        target_id=str(a_id),
+                                        gge_server=serveur,
                                     )
                                     a_info["name"] = new_name
                                     changes_detected = True
@@ -921,8 +925,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                         )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "infos", embeds_locales, users_lang,
-                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
+                                        abonnes_alliance,
+                                        "infos",
+                                        embeds_locales,
+                                        users_lang,
+                                        target_name=a_info.get("name", ""),
+                                        target_id=str(a_id),
+                                        gge_server=serveur,
                                     )
 
                                 if entrees or sorties:
@@ -976,8 +985,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                             )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "mouvements", embeds_locales, users_lang,
-                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
+                                        abonnes_alliance,
+                                        "mouvements",
+                                        embeds_locales,
+                                        users_lang,
+                                        target_name=a_info.get("name", ""),
+                                        target_id=str(a_id),
+                                        gge_server=serveur,
                                     )
 
                                 if rangs_changes:
@@ -1030,8 +1044,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                         )
                                         embeds_locales[lg] = embed
                                     await self.envoyer_alerte_privee(
-                                        abonnes_alliance, "rangs", embeds_locales, users_lang,
-                                        target_name=a_info.get("name", ""), target_id=str(a_id), gge_server=serveur
+                                        abonnes_alliance,
+                                        "rangs",
+                                        embeds_locales,
+                                        users_lang,
+                                        target_name=a_info.get("name", ""),
+                                        target_id=str(a_id),
+                                        gge_server=serveur,
                                     )
 
                                 if new_name != old_name or entrees or sorties or rangs_changes:
@@ -1129,8 +1148,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                     embeds_locales[lg] = embed
 
                                                 await self.envoyer_alerte_privee(
-                                                    abonnes, "pseudo", embeds_locales, users_lang,
-                                                    target_name=player, target_id=str(p_id), gge_server=serveur
+                                                    abonnes,
+                                                    "pseudo",
+                                                    embeds_locales,
+                                                    users_lang,
+                                                    target_name=player,
+                                                    target_id=str(p_id),
+                                                    gge_server=serveur,
                                                 )
                                                 info["name"], info["last_name"] = (
                                                     new_name,
@@ -1181,8 +1205,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                     embeds_locales[lg] = embed
 
                                                 await self.envoyer_alerte_privee(
-                                                    abonnes, "alliance", embeds_locales, users_lang,
-                                                    target_name=player, target_id=str(p_id), gge_server=serveur
+                                                    abonnes,
+                                                    "alliance",
+                                                    embeds_locales,
+                                                    users_lang,
+                                                    target_name=player,
+                                                    target_id=str(p_id),
+                                                    gge_server=serveur,
                                                 )
                                                 info["last_alliance_name"], info["last_alliance"] = (
                                                     new_alli,
@@ -1225,8 +1254,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                     embeds_locales[lg] = embed
 
                                                 await self.envoyer_alerte_privee(
-                                                    abonnes, "puissance", embeds_locales, users_lang,
-                                                    target_name=player, target_id=str(p_id), gge_server=serveur
+                                                    abonnes,
+                                                    "puissance",
+                                                    embeds_locales,
+                                                    users_lang,
+                                                    target_name=player,
+                                                    target_id=str(p_id),
+                                                    gge_server=serveur,
                                                 )
                                                 info["last_might"] = current_might
                                                 changes_detected = True
@@ -1349,8 +1383,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                         embeds_locales[lg] = embed
 
                                                     await self.envoyer_alerte_privee(
-                                                        abonnes, "colombe", embeds_locales, users_lang,
-                                                        target_name=player, target_id=str(p_id), gge_server=serveur
+                                                        abonnes,
+                                                        "colombe",
+                                                        embeds_locales,
+                                                        users_lang,
+                                                        target_name=player,
+                                                        target_id=str(p_id),
+                                                        gge_server=serveur,
                                                     )
 
                                             if (new_peace != old_peace) or (was_protected != is_protected):
@@ -1436,8 +1475,13 @@ class RadarCog(commands.GroupCog, group_name="radar", group_description="Persona
                                                 embeds_locales[lg] = embed
 
                                             await self.envoyer_alerte_privee(
-                                                abonnes, "position", embeds_locales, users_lang,
-                                                target_name=info.get("name", ""), target_id=str(p_id), gge_server=serveur
+                                                abonnes,
+                                                "position",
+                                                embeds_locales,
+                                                users_lang,
+                                                target_name=info.get("name", ""),
+                                                target_id=str(p_id),
+                                                gge_server=serveur,
                                             )
                                             info["last_pos"] = m["created_at"]
                                             changes_detected = True

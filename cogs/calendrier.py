@@ -232,7 +232,7 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             guild=interaction.guild,
             user_id=interaction.user.id,
             gge_server=serveur,
-            new_value=f"channel:{channel.id}"
+            new_value=f"channel:{channel.id}",
         )
 
         msg = t(
@@ -276,7 +276,7 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             guild=interaction.guild,
             user_id=interaction.user.id,
             gge_server=serveur,
-            new_value=alliance_name
+            new_value=alliance_name,
         )
 
         msg_success = t(
@@ -344,10 +344,7 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             await save_calendrier_async(data)
 
             obs.record_guild_event(
-                "calendar_stop",
-                guild=interaction.guild,
-                user_id=interaction.user.id,
-                gge_server=serveur
+                "calendar_stop", guild=interaction.guild, user_id=interaction.user.id, gge_server=serveur
             )
 
             msg = t(
@@ -556,7 +553,9 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
             await self._run_calendar_check()
         except Exception as e:
             logger.error(f"❌ [CALENDRIER CRASH] : {traceback.format_exc()}")
-            obs.record_error(source="task", scope="check_newshub_calendar_task", exception=e, cog="calendar", severity="warning")
+            obs.record_error(
+                source="task", scope="check_newshub_calendar_task", exception=e, cog="calendar", severity="warning"
+            )
 
     async def _run_calendar_check(self):
         maintenant = datetime.now()
@@ -659,14 +658,26 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
                                 try:
                                     await channel.send(embed=embed_start)
                                     obs.record_alert(
-                                        source="calendar", alert_type="start", gge_server=serveur_cible,
-                                        channel="guild", recipients=1, delivered=1, failed=0, dm_blocked=0
+                                        source="calendar",
+                                        alert_type="start",
+                                        gge_server=serveur_cible,
+                                        channel="guild",
+                                        recipients=1,
+                                        delivered=1,
+                                        failed=0,
+                                        dm_blocked=0,
                                     )
                                 except Exception as e:
                                     logger.error(f"Erreur d'envoi alerte début calendrier : {e}")
                                     obs.record_alert(
-                                        source="calendar", alert_type="start", gge_server=serveur_cible,
-                                        channel="guild", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                        source="calendar",
+                                        alert_type="start",
+                                        gge_server=serveur_cible,
+                                        channel="guild",
+                                        recipients=1,
+                                        delivered=0,
+                                        failed=1,
+                                        dm_blocked=0,
                                     )
 
                 notified.append(uid_start)
@@ -709,14 +720,26 @@ class CalendrierCog(commands.GroupCog, group_name="calendar", group_description=
                                 try:
                                     await channel.send(embed=embed_end)
                                     obs.record_alert(
-                                        source="calendar", alert_type="end", gge_server=serveur_cible,
-                                        channel="guild", recipients=1, delivered=1, failed=0, dm_blocked=0
+                                        source="calendar",
+                                        alert_type="end",
+                                        gge_server=serveur_cible,
+                                        channel="guild",
+                                        recipients=1,
+                                        delivered=1,
+                                        failed=0,
+                                        dm_blocked=0,
                                     )
                                 except Exception as e:
                                     logger.error(f"Erreur d'envoi alerte fin calendrier : {e}")
                                     obs.record_alert(
-                                        source="calendar", alert_type="end", gge_server=serveur_cible,
-                                        channel="guild", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                        source="calendar",
+                                        alert_type="end",
+                                        gge_server=serveur_cible,
+                                        channel="guild",
+                                        recipients=1,
+                                        delivered=0,
+                                        failed=1,
+                                        dm_blocked=0,
                                     )
 
                                 tracked = g_info.get("tracked_alliances", [])

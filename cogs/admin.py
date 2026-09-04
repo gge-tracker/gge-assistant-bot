@@ -4,13 +4,10 @@ import json
 import logging
 import os
 import re
-import traceback
 from datetime import datetime, timedelta
 
 import discord
-from bs4 import BeautifulSoup
-from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 import observability as obs
 from utils import (

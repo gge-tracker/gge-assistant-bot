@@ -1224,19 +1224,37 @@ class EventsCog(commands.Cog):
                                 user = self.bot.get_user(int(user_id)) or await self.bot.fetch_user(int(user_id))
                                 await user.send(embed=embeds_locales.get(langue, embeds_locales["fr"]))
                                 obs.record_alert(
-                                    source="rival", alert_type="overtake" if diff > 0 else "danger",
-                                    gge_server=serveur, channel="dm", recipients=1, delivered=1, failed=0, dm_blocked=0
+                                    source="rival",
+                                    alert_type="overtake" if diff > 0 else "danger",
+                                    gge_server=serveur,
+                                    channel="dm",
+                                    recipients=1,
+                                    delivered=1,
+                                    failed=0,
+                                    dm_blocked=0,
                                 )
                             except discord.Forbidden:
                                 obs.record_alert(
-                                    source="rival", alert_type="overtake" if diff > 0 else "danger",
-                                    gge_server=serveur, channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=1
+                                    source="rival",
+                                    alert_type="overtake" if diff > 0 else "danger",
+                                    gge_server=serveur,
+                                    channel="dm",
+                                    recipients=1,
+                                    delivered=0,
+                                    failed=1,
+                                    dm_blocked=1,
                                 )
                             except Exception as e:
                                 logger.error(f"❌ Erreur envoi MP Rival: {e}")
                                 obs.record_alert(
-                                    source="rival", alert_type="overtake" if diff > 0 else "danger",
-                                    gge_server=serveur, channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                    source="rival",
+                                    alert_type="overtake" if diff > 0 else "danger",
+                                    gge_server=serveur,
+                                    channel="dm",
+                                    recipients=1,
+                                    delivered=0,
+                                    failed=1,
+                                    dm_blocked=0,
                                 )
 
                         last_scores[rival] = score_rival

@@ -622,12 +622,9 @@ class AideCog(commands.Cog):
 
         logger.info(f"📩 [Contact] Nouveau message de {interaction.user.name} ({interaction.user.id})")
         maintenant_iso = discord.utils.utcnow().isoformat().replace("+00:00", "Z")
-        
+
         obs.record_guild_event(
-            "user_contact",
-            guild=interaction.guild,
-            user_id=interaction.user.id,
-            new_value="contact_form_submitted"
+            "user_contact", guild=interaction.guild, user_id=interaction.user.id, new_value="contact_form_submitted"
         )
 
         async with get_file_lock(CONTACTS_FILE):

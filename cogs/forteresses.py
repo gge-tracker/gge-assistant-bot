@@ -584,7 +584,7 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
                 guild=interaction.guild,
                 user_id=interaction.user.id,
                 gge_server=serveur,
-                new_value=f"player:{nom_joueur}|kids:{kids}|dur:{duree_val}"
+                new_value=f"player:{nom_joueur}|kids:{kids}|dur:{duree_val}",
             )
 
         ts_fin = int(end_time.timestamp())
@@ -667,16 +667,13 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
             del data["sessions"][user_id]
             await save_dungeons_async(data)
             logger.info(f"🛑 [FORTERESSES] {interaction.user.name} a stoppé son scan radar.")
-            
+
             # Enregistrement Télémétrie
             if interaction.guild:
                 obs.record_guild_event(
-                    "fortress_scan_stopped",
-                    guild=interaction.guild,
-                    user_id=interaction.user.id,
-                    gge_server=serveur
+                    "fortress_scan_stopped", guild=interaction.guild, user_id=interaction.user.id, gge_server=serveur
                 )
-                
+
             await interaction.followup.send(
                 t(
                     langue,
@@ -767,21 +764,39 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
                             f"📤 [FORTERESSES] Envoi automatique de nouvelles cibles à {user.name} ({user_id}) pour {joueur}."
                         )
                         await user.send(embed=embed_cibles, view=view)
-                        
+
                         obs.record_alert(
-                            source="fortress", alert_type="spawned", gge_server=serveur,
-                            channel="dm", recipients=1, delivered=1, failed=0, dm_blocked=0
+                            source="fortress",
+                            alert_type="spawned",
+                            gge_server=serveur,
+                            channel="dm",
+                            recipients=1,
+                            delivered=1,
+                            failed=0,
+                            dm_blocked=0,
                         )
                     except discord.Forbidden:
                         obs.record_alert(
-                            source="fortress", alert_type="spawned", gge_server=serveur,
-                            channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=1
+                            source="fortress",
+                            alert_type="spawned",
+                            gge_server=serveur,
+                            channel="dm",
+                            recipients=1,
+                            delivered=0,
+                            failed=1,
+                            dm_blocked=1,
                         )
                     except Exception as e:
                         logger.error(f"❌ [FORTERESSES] Erreur d'envoi MP à {user_id}: {e}")
                         obs.record_alert(
-                            source="fortress", alert_type="spawned", gge_server=serveur,
-                            channel="dm", recipients=1, delivered=0, failed=1, dm_blocked=0
+                            source="fortress",
+                            alert_type="spawned",
+                            gge_server=serveur,
+                            channel="dm",
+                            recipients=1,
+                            delivered=0,
+                            failed=1,
+                            dm_blocked=0,
                         )
 
             if sessions_modifiees:
@@ -789,7 +804,9 @@ class ForteressesCog(commands.GroupCog, group_name="fortress", group_description
 
         except Exception as e:
             logger.error(f"❌ [FORTERESSES CRASH] : {traceback.format_exc()}")
-            obs.record_error(source="task", scope="dungeon_spy_task", exception=e, cog="forteresses", severity="critical")
+            obs.record_error(
+                source="task", scope="dungeon_spy_task", exception=e, cog="forteresses", severity="critical"
+            )
 
     @app_commands.command(name="history", description="View a player's fortress attack history (up to 365 days)")
     @app_commands.checks.cooldown(1, 5.0, key=lambda i: i.user.id)

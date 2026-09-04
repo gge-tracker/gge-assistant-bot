@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-import urllib.parse
 import traceback
+import urllib.parse
 from datetime import datetime
 
 import discord
@@ -684,7 +684,7 @@ class StormsCog(commands.Cog):
             guild=interaction.guild,
             user_id=interaction.user.id,
             gge_server=serveur,
-            new_value=f"channel:{channel.id}|big:{ping_big}|small:{ping_small}"
+            new_value=f"channel:{channel.id}|big:{ping_big}|small:{ping_small}",
         )
 
         desc = t(
@@ -857,7 +857,7 @@ class StormsCog(commands.Cog):
 
                         try:
                             sent_msg = await channel.send(content=msg_content, embed=embed)
-                            
+
                             obs.record_alert(
                                 source="storm_islands",
                                 alert_type="respawn",
@@ -866,7 +866,7 @@ class StormsCog(commands.Cog):
                                 recipients=1,
                                 delivered=1,
                                 failed=0,
-                                dm_blocked=0
+                                dm_blocked=0,
                             )
 
                             self.active_alerts.append(
@@ -884,14 +884,26 @@ class StormsCog(commands.Cog):
                             )
                         except discord.Forbidden:
                             obs.record_alert(
-                                source="storm_islands", alert_type="respawn", gge_server=gge_server,
-                                channel="guild", recipients=1, delivered=0, failed=1, dm_blocked=1
+                                source="storm_islands",
+                                alert_type="respawn",
+                                gge_server=gge_server,
+                                channel="guild",
+                                recipients=1,
+                                delivered=0,
+                                failed=1,
+                                dm_blocked=1,
                             )
                         except discord.HTTPException as e:
                             logger.error(f"❌ [Storm Alerts] Erreur réseau Discord : {e}")
                             obs.record_alert(
-                                source="storm_islands", alert_type="respawn", gge_server=gge_server,
-                                channel="guild", recipients=1, delivered=0, failed=1, dm_blocked=0
+                                source="storm_islands",
+                                alert_type="respawn",
+                                gge_server=gge_server,
+                                channel="guild",
+                                recipients=1,
+                                delivered=0,
+                                failed=1,
+                                dm_blocked=0,
                             )
 
             alerts_to_keep = []
@@ -999,12 +1011,9 @@ class StormsCog(commands.Cog):
         if "guilds" in data and guild_id_str in data["guilds"]:
             del data["guilds"][guild_id_str]
             await save_storm_config(data)
-            
+
             obs.record_guild_event(
-                "storm_stop",
-                guild=interaction.guild,
-                user_id=interaction.user.id,
-                gge_server=serveur
+                "storm_stop", guild=interaction.guild, user_id=interaction.user.id, gge_server=serveur
             )
 
             embed = discord.Embed(

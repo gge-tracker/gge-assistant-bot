@@ -461,14 +461,14 @@ class TargetWizard(discord.ui.View):
             with open(path_users, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             utils.clear_config_cache()
-            
+
             # Enregistrement Télémétrie : Un utilisateur a mis à jour ses filtres
             if interaction and interaction.guild:
                 obs.record_guild_event(
                     "target_setup",
                     guild=interaction.guild,
                     user_id=interaction.user.id,
-                    new_value=f"lvl:{self.config.get('lvl_min', -1)}-{self.config.get('lvl_max', -1)}|pp:{self.config.get('pp_min', -1)}-{self.config.get('pp_max', -1)}"
+                    new_value=f"lvl:{self.config.get('lvl_min', -1)}-{self.config.get('lvl_max', -1)}|pp:{self.config.get('pp_min', -1)}-{self.config.get('pp_max', -1)}",
                 )
         except Exception as e:
             logger.error(f"Error saving user config : {e}")
